@@ -1,0 +1,47 @@
+version: "3.9"
+
+services:
+  api:
+    build: .
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./:/app
+      - /var/run/docker.sock:/var/run/docker.sock  # Allow Docker-in-Docker for tools
+    command: ["uvicorn", "fastapi_api:app", "--host", "0.0.0.0", "--port", "8000"]
+    # Note: Tools (slither/mythril) are optional and can be used via Docker-in-Docker
+
+  ui:
+    build: .
+    depends_on:
+      - api
+    environment:
+      - API_URL=http://api:8000
+    command: ["streamlit", "run", "streamlit_ui.py", "--server.port", "8501", "--server.address", "0.0.0.0"]
+    ports:
+      - "8501:8501"
+
+  # Slither service (optional - can be used via Docker)
+  slither:
+    build:
+      context: .
+      dockerfile: Dockerfile.slither
+    image: slither-scanner:latest
+    profiles:
+      - tools
+    # Keep container running for faster access
+    command: ["tail", "-f", "/dev/null"]
+
+  # Mythril service (optional - can be used via Docker)
+  mythril:
+    build:
+      context: .
+      dockerfile: Dockerfile.mythril
+    image: mythril-scanner:latest
+    profiles:
+      - tools
+    # Keep container running for faster access
+    command: ["tail", "-f", "/dev/null"]
+

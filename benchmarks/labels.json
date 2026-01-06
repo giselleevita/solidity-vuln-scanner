@@ -1,0 +1,90 @@
+{
+  "contracts": {
+    "small.sol": {
+      "size": "small",
+      "loc_range": [
+        50,
+        150
+      ],
+      "expected_vulnerabilities": [],
+      "expected_severity": "SAFE",
+      "description": "Simple token contract with basic functionality"
+    },
+    "medium.sol": {
+      "size": "medium",
+      "loc_range": [
+        300,
+        1200
+      ],
+      "expected_vulnerabilities": [
+        "access_control"
+      ],
+      "expected_severity": "HIGH",
+      "description": "ERC20-like token with missing access control on emergencyWithdraw"
+    },
+    "large.sol": {
+      "size": "large",
+      "loc_range": [
+        2000,
+        6000
+      ],
+      "expected_vulnerabilities": [
+        "reentrancy"
+      ],
+      "expected_severity": "CRITICAL",
+      "description": "DeFi vault with reentrancy vulnerability in withdraw function"
+    },
+    "xlarge.sol": {
+      "size": "xlarge",
+      "loc_range": [
+        10000,
+        15000
+      ],
+      "expected_vulnerabilities": [
+        "reentrancy"
+      ],
+      "expected_severity": "CRITICAL",
+      "description": "Complex protocol with reentrancy vulnerability"
+    }
+  },
+  "baseline_performance": {
+    "small": {
+      "max_time_seconds": 0.5,
+      "description": "Small contracts should complete quickly"
+    },
+    "medium": {
+      "max_time_seconds": 1.5,
+      "description": "Medium contracts typical production size"
+    },
+    "large": {
+      "max_time_seconds": 3.0,
+      "description": "Large contracts should still be reasonable"
+    },
+    "xlarge": {
+      "max_time_seconds": 10.0,
+      "description": "Very large contracts may take longer"
+    }
+  },
+  "regression_thresholds": {
+    "small": {
+      "time_increase_percent": 100,
+      "absolute_time_floor_seconds": 1.0,
+      "description": "Alert if time increases >100% OR absolute time >1s"
+    },
+    "medium": {
+      "time_increase_percent": 75,
+      "absolute_time_floor_seconds": 2.0,
+      "description": "Alert if time increases >75% OR absolute time >2s"
+    },
+    "large": {
+      "time_increase_percent": 50,
+      "absolute_time_floor_seconds": 3.0,
+      "description": "Alert if time increases >50% OR absolute time >3s"
+    },
+    "xlarge": {
+      "time_increase_percent": 35,
+      "absolute_time_floor_seconds": 5.0,
+      "description": "Alert if time increases >35% OR absolute time >5s"
+    }
+  }
+}

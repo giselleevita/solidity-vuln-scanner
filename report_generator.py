@@ -1,0 +1,284 @@
+"""
+Report generation utilities for creating HTML, PDF, and formatted reports
+"""
+
+import json
+from datetime import datetime
+from typing import Dict, List
+
+
+def generate_html_report(analysis_result: Dict) -> str:
+    """Generate HTML report from analysis results"""
+    
+    vulnerabilities_html = ""
+    if analysis_result.get("vulnerabilities"):
+        for vuln in analysis_result["vulnerabilities"]:
+            severity_class = vuln.get("severity", "INFO").lower()
+            vulnerabilities_html += f"""
+            <div class="vulnerability {severity_class}">
+                <h3>{vuln.get('type', 'Unknown').upper()} - {vuln.get('severity', 'UNKNOWN')}</h3>
+                <p><strong>Line:</strong> {vuln.get('line', '?')}</p>
+                <p><strong>Description:</strong> {vuln.get('description', 'N/A')}</p>
+                <pre><code>{vuln.get('code_snippet', 'N/A')}</code></pre>
+                <p><strong>Remediation:</strong> {vuln.get('remediation', 'N/A')}</p>
+            </div>
+            """
+    else:
+        vulnerabilities_html = "<p>✅ No vulnerabilities detected!</p>"
+    
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Security Audit Report - {analysis_result.get('contract_name', 'Contract')}</title>
+        <style>
+            body {{
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                max-width: 1200px;
+                margin: 0 auto;
+                padding: 2rem;
+                background: #f5f5f5;
+            }}
+            .header {{
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                padding: 2rem;
+                border-radius: 10px;
+                margin-bottom: 2rem;
+            }}
+            .metrics {{
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                gap: 1rem;
+                margin-bottom: 2rem;
+            }}
+            .metric {{
+                background: white;
+                padding: 1.5rem;
+                border-radius: 8px;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                text-align: center;
+            }}
+            .metric-value {{
+                font-size: 2rem;
+                font-weight: bold;
+                color: #667eea;
+            }}
+            .vulnerability {{
+                background: white;
+                padding: 1.5rem;
+                margin: 1rem 0;
+                border-radius: 8px;
+                border-left: 4px solid;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            }}
+            .critical {{ border-left-color: #d32f2f; }}
+            .high {{ border-left-color: #f57c00; }}
+            .medium {{ border-left-color: #fbc02d; }}
+            .low {{ border-left-color: #388e3c; }}
+            .info {{ border-left-color: #1976d2; }}
+            pre {{
+                background: #263238;
+                color: #aed581;
+                padding: 1rem;
+                border-radius: 6px;
+                overflow-x: auto;
+            }}
+            code {{
+                font-family: 'Courier New', monospace;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <h1>🔐 Security Audit Report</h1>
+            <h2>{analysis_result.get('contract_name', 'Contract')}</h2>
+            <p>Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+        </div>
+        
+        <div class="metrics">
+            <div class="metric">
+                <div class="metric-value">{analysis_result.get('risk_score', 0)}</div>
+                <div>Risk Score</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value">{analysis_result.get('severity', 'SAFE')}</div>
+                <div>Severity</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value">{len(analysis_result.get('vulnerabilities', []))}</div>
+                <div>Vulnerabilities</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value">{analysis_result.get('lines_of_code', 0)}</div>
+                <div>Lines of Code</div>
+            </div>
+        </div>
+        
+        <h2>Vulnerabilities</h2>
+        {vulnerabilities_html}
+        
+        {f'''
+        <h2>AI Audit</h2>
+        <div class="vulnerability">
+            <h3>Summary</h3>
+            <p>{analysis_result.get('llm_audit', {}).get('summary', 'N/A')}</p>
+            <h3>Recommendations</h3>
+            <ul>
+                {''.join([f"<li>{rec}</li>" for rec in analysis_result.get('llm_audit', {}).get('recommendations', [])])}
+            </ul>
+        </div>
+        ''' if analysis_result.get('llm_audit') else ''}
+        
+        <footer style="margin-top: 3rem; padding-top: 2rem; border-top: 1px solid #ddd; color: #666; text-align: center;">
+            <p>Generated by Solidity Vuln Scanner</p>
+            <p>⚠️ This report is for educational purposes only. Always conduct professional audits before deployment.</p>
+        </footer>
+    </body>
+    </html>
+    """
+    
+    return html
+
+
+def generate_markdown_report(analysis_result: Dict) -> str:
+    """Generate Markdown report"""
+    
+    md = f"""# Security Audit Report: {analysis_result.get('contract_name', 'Contract')}
+
+**Date:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}  
+**Risk Score:** {analysis_result.get('risk_score', 0)}/100  
+**Severity:** {analysis_result.get('severity', 'SAFE')}  
+**Vulnerabilities Found:** {len(analysis_result.get('vulnerabilities', []))}  
+**Lines of Code:** {analysis_result.get('lines_of_code', 0)}
+
+## Summary
+
+"""
+    
+    if analysis_result.get("vulnerabilities"):
+        md += "## Vulnerabilities\n\n"
+        for i, vuln in enumerate(analysis_result["vulnerabilities"], 1):
+            md += f"""### {i}. {vuln.get('type', 'Unknown').upper()} - {vuln.get('severity', 'UNKNOWN')}
+
+- **Line:** {vuln.get('line', '?')}
+- **Description:** {vuln.get('description', 'N/A')}
+- **Code:**
+```solidity
+{vuln.get('code_snippet', 'N/A')}
+```
+- **Remediation:** {vuln.get('remediation', 'N/A')}
+
+"""
+    else:
+        md += "✅ **No vulnerabilities detected!**\n\n"
+    
+    if analysis_result.get('llm_audit'):
+        llm = analysis_result['llm_audit']
+        md += f"""## AI Security Audit
+
+**Risk Assessment:** {llm.get('risk_assessment', 'N/A')}
+
+**Summary:**  
+{llm.get('summary', 'N/A')}
+
+**Recommendations:**
+"""
+        for rec in llm.get('recommendations', []):
+            md += f"- {rec}\n"
+    
+    md += "\n---\n\n*Generated by Solidity Vuln Scanner*\n"
+    
+    return md
+
+
+def generate_sarif_report(analysis_result: Dict) -> Dict:
+    """
+    Generate SARIF (Static Analysis Results Interchange Format) report
+    Compatible with GitHub Code Scanning and other SARIF consumers
+    """
+    from datetime import datetime
+    
+    # Map severity levels to SARIF levels
+    severity_map = {
+        "CRITICAL": "error",
+        "HIGH": "error",
+        "MEDIUM": "warning",
+        "LOW": "note",
+        "INFO": "note",
+        "SAFE": "none"
+    }
+    
+    # Build rules (vulnerability types)
+    rules = {}
+    for vuln in analysis_result.get("vulnerabilities", []):
+        vuln_type = vuln.get("type", "unknown")
+        if vuln_type not in rules:
+            rules[vuln_type] = {
+                "id": vuln_type,
+                "name": vuln_type.replace("_", " ").title(),
+                "shortDescription": {
+                    "text": vuln.get("description", "")[:100]
+                },
+                "help": {
+                    "text": vuln.get("remediation", "")
+                },
+                "properties": {
+                    "severity": vuln.get("severity", "INFO")
+                }
+            }
+    
+    # Build results (findings)
+    results = []
+    for vuln in analysis_result.get("vulnerabilities", []):
+        line_num = vuln.get("line", 1)
+        results.append({
+            "ruleId": vuln.get("type", "unknown"),
+            "message": {
+                "text": vuln.get("description", "")
+            },
+            "level": severity_map.get(vuln.get("severity", "INFO"), "note"),
+            "locations": [{
+                "physicalLocation": {
+                    "artifactLocation": {
+                        "uri": f"{analysis_result.get('contract_name', 'contract')}.sol"
+                    },
+                    "region": {
+                        "startLine": line_num,
+                        "startColumn": 1,
+                        "endLine": line_num,
+                        "endColumn": 1
+                    }
+                }
+            }],
+            "properties": {
+                "remediation": vuln.get("remediation", ""),
+                "codeSnippet": vuln.get("code_snippet", "")
+            }
+        })
+    
+    # Build SARIF structure
+    sarif = {
+        "version": "2.1.0",
+        "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+        "runs": [{
+            "tool": {
+                "driver": {
+                    "name": "Solidity Vuln Scanner",
+                    "version": "1.0.0",
+                    "informationUri": "https://github.com/yourusername/solidity-vuln-scanner",
+                    "rules": list(rules.values())
+                }
+            },
+            "results": results,
+            "properties": {
+                "contractName": analysis_result.get("contract_name", "unknown"),
+                "riskScore": analysis_result.get("risk_score", 0),
+                "overallSeverity": analysis_result.get("severity", "SAFE"),
+                "analysisDate": datetime.now().isoformat()
+            }
+        }]
+    }
+    
+    return sarif
+

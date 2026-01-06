@@ -1,0 +1,171 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Run tests with coverage
+        run: |
+          if [ -d tests ]; then
+            pytest -q --cov=. --cov-report=term-missing --cov-report=html
+          else
+            echo "No tests directory found; skipping pytest."
+          fi
+
+      - name: Upload coverage artifacts
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: coverage-${{ github.sha }}
+          path: htmlcov/
+          retention-days: 30
+        continue-on-error: true
+
+      - name: Lint package syntax
+        run: python -m compileall .
+
+      - name: Run security scan and generate SARIF
+        run: |
+          python -c "
+          import sys
+          sys.path.insert(0, '.')
+          from fastapi_api import app
+          from fastapi.testclient import TestClient
+          from report_generator import generate_sarif_report
+          
+          client = TestClient(app)
+          
+          # Test contract with known vulnerability
+          test_contract = '''pragma solidity ^0.8.0;
+          contract Test {
+              function withdraw(uint256 amount) public {
+                  (bool success, ) = msg.sender.call{value: amount}(\"\");
+                  require(success);
+              }
+          }'''
+          
+          response = client.post('/analyze', json={
+              'contract_code': test_contract,
+              'contract_name': 'Test',
+              'use_llm_audit': False
+          })
+          
+          if response.status_code == 200:
+              result = response.json()
+              import json
+              sarif = generate_sarif_report(result)
+              with open('results.sarif', 'w') as f:
+                  json.dump(sarif, f, indent=2)
+              print('SARIF report generated')
+          else:
+              print(f'Analysis failed: {response.status_code}')
+              sys.exit(1)
+          "
+        continue-on-error: true
+
+      - name: Upload SARIF to GitHub Code Scanning
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: results.sarif
+        continue-on-error: true
+
+  # Performance benchmarks (full suite on main, smoke check on PRs)
+  # Runs separately, doesn't block PRs
+  performance-smoke:
+    runs-on: ubuntu-latest
+    # Run on: main branch merges, workflow_dispatch, or PRs (smoke check only)
+    if: |
+      github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') ||
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'pull_request'
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Run performance benchmarks
+        run: |
+          if [ -d benchmarks ]; then
+            # On PRs, run only small contract (smoke check)
+            if [ "${{ github.event_name }}" == "pull_request" ]; then
+              pytest benchmarks/test_performance.py::TestPerformanceBenchmarks::test_analyze_small -v --tb=short
+            else
+              # Full benchmark suite on main/workflow_dispatch
+              pytest benchmarks/test_performance.py -v --tb=short
+            fi
+          else
+            echo "No benchmarks directory found; skipping."
+          fi
+        continue-on-error: true
+
+      - name: Upload benchmark results as artifact
+        uses: actions/upload-artifact@v3
+        if: always() && (github.event_name != 'pull_request' || github.ref == 'refs/heads/main')
+        with:
+          name: benchmarks-${{ github.sha }}
+          path: |
+            benchmarks/results.json
+            benchmarks/results.md
+          retention-days: 30
+        continue-on-error: true
+
+      - name: Check for performance regressions
+        if: always() && (github.event_name != 'pull_request' || github.ref == 'refs/heads/main')
+        run: |
+          if [ -f benchmarks/results.json ]; then
+            python3 -c "
+            import json
+            import sys
+            
+            with open('benchmarks/results.json') as f:
+                results = json.load(f)
+            
+            regressions = []
+            for size, data in results.get('contracts', {}).items():
+                if data.get('regression_detected'):
+                    regressions.append(f\"{size}: {data.get('median_time_seconds', 0):.3f}s (baseline: {data.get('baseline_time_seconds', 0):.3f}s)\")
+            
+            if regressions:
+                print('⚠️  Performance regressions detected:')
+                for r in regressions:
+                    print(f'  - {r}')
+                print('\\nNote: This is informational. CI thresholds are loose to avoid flakiness.')
+            else:
+                print('✅ No significant performance regressions detected.')
+            "
+          else
+            echo "No benchmark results file found."
+          fi
+        continue-on-error: true
+

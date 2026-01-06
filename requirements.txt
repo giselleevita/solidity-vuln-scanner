@@ -1,0 +1,38 @@
+# Core dependencies
+python-dotenv==1.0.0
+
+# Web frameworks
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.5.0
+pydantic-settings==2.1.0
+streamlit==1.28.1
+python-multipart==0.0.20  # Required for file uploads in FastAPI
+
+# LLM integrations
+openai==1.3.0
+anthropic==0.7.0
+
+# Security and parsing
+regex==2023.12.25
+
+# Database (optional, for future features)
+sqlalchemy==2.0.23
+
+# Testing
+pytest==7.4.3
+pytest-cov==4.1.0
+pytest-asyncio==0.21.1
+
+# Data processing
+pandas==2.1.3
+numpy==1.26.2
+
+# Utilities
+requests==2.31.0
+click==8.1.7
+typer==0.9.0
+rich==13.7.0  # Pretty console output
+
+# Server
+gunicorn==21.2.0
