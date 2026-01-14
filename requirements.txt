@@ -15,6 +15,8 @@ anthropic==0.7.0
 
 # Security and parsing
 regex==2023.12.25
+py-solc-ast==1.2.9  # AST parsing for Solidity
+solc-select==0.2.0  # Solidity compiler version management
 
 # Database (optional, for future features)
 sqlalchemy==2.0.23

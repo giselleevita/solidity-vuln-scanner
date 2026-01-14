@@ -33,6 +33,24 @@ class Config:
     
     # File limits
     max_file_size_mb: int = int(os.getenv("MAX_FILE_SIZE_MB", "1"))
+    
+    # Rate limiting
+    rate_limit_max_requests: int = int(os.getenv("RATE_LIMIT_MAX_REQUESTS", "60"))
+    rate_limit_window_seconds: int = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60"))
+    
+    # Caching
+    cache_max_size: int = int(os.getenv("CACHE_MAX_SIZE", "100"))
+    cache_ttl_seconds: int = int(os.getenv("CACHE_TTL_SECONDS", "3600"))
+    
+    # CORS
+    cors_origins: str = os.getenv("CORS_ORIGINS", "*")  # Comma-separated or "*" for all
+    
+    # LLM limits
+    llm_max_contract_size: int = int(os.getenv("LLM_MAX_CONTRACT_SIZE", "50000"))  # Increased from 5000
+    
+    # Analysis constants
+    max_contract_size_chars: int = int(os.getenv("MAX_CONTRACT_SIZE_CHARS", "1000000"))  # ~1MB
+    code_snippet_context_lines: int = int(os.getenv("CODE_SNIPPET_CONTEXT_LINES", "2"))
 
 
 @lru_cache(maxsize=1)

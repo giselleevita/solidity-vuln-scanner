@@ -17,6 +17,13 @@ from tools_integration import run_slither, run_mythril, check_slither_installed,
 from static_analyzer import StaticAnalyzer, AnalysisResult
 from llm_auditor import LLMAuditor
 from app_config import get_config
+from logger_config import setup_logging, get_logger
+from exceptions import (
+    AnalysisException, ValidationError, LLMAuditException,
+    PatternCompilationError, ScannerException
+)
+from input_validator import validate_contract_code, sanitize_contract_code, validate_contract_name
+import re
 
 # Import optional features
 try:
@@ -82,6 +89,10 @@ class HealthResponse(BaseModel):
     llm_enabled: bool
 
 
+# Setup logging
+logger = setup_logging(log_level="INFO" if not get_config().debug else "DEBUG")
+app_logger = get_logger(__name__)
+
 # Initialize app
 app = FastAPI(
     title="Solidity Vuln Scanner API",
@@ -89,14 +100,17 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Add CORS middleware
+# Add CORS middleware (configurable)
+config = get_config()
+cors_origins = ["*"] if config.cors_origins == "*" else [origin.strip() for origin in config.cors_origins.split(",")]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app_logger.info(f"CORS configured with origins: {cors_origins}")
 
 # Add rate limiting middleware (only if available)
 if RateLimitMiddleware is not None and rate_limiter is not None:
@@ -107,12 +121,16 @@ else:
 # Initialize components
 try:
     config = get_config()
+    app_logger.info("Configuration loaded successfully")
 except Exception as e:
+    app_logger.error(f"Failed to load configuration: {e}")
     raise
 
 try:
     static_analyzer = StaticAnalyzer()
+    app_logger.info("Static analyzer initialized")
 except Exception as e:
+    app_logger.error(f"Failed to initialize static analyzer: {e}")
     raise
 
 # Initialize LLM ONLY if explicitly enabled AND API key is provided
@@ -150,7 +168,7 @@ async def health_check():
     )
 
 
-def _analyze_static_and_llm(request: ContractAnalysisRequest, start_time: float):
+async def _analyze_static_and_llm(request: ContractAnalysisRequest, start_time: float):
     """
     Helper function to run static analysis and optional LLM audit
     
@@ -160,34 +178,66 @@ def _analyze_static_and_llm(request: ContractAnalysisRequest, start_time: float)
         
     Returns:
         Complete security analysis report
+        
+    Raises:
+        HTTPException: For validation or analysis errors
     """
-    # Validate input
-    if not request.contract_code or not request.contract_code.strip():
-        raise HTTPException(status_code=400, detail="Contract code cannot be empty")
+    # Validate and sanitize input
+    is_valid, error_msg = validate_contract_code(request.contract_code)
+    if not is_valid:
+        app_logger.warning(f"Invalid contract code: {error_msg}")
+        raise HTTPException(status_code=400, detail=error_msg)
     
-    if len(request.contract_code) > config.max_file_size_mb * 1024 * 1024:
-        raise HTTPException(
-            status_code=413,
-            detail=f"Contract code too large (max {config.max_file_size_mb}MB)"
-        )
+    is_valid, error_msg = validate_contract_name(request.contract_name)
+    if not is_valid:
+        app_logger.warning(f"Invalid contract name: {error_msg}")
+        raise HTTPException(status_code=400, detail=error_msg)
+    
+    # Sanitize contract code
+    sanitized_code = sanitize_contract_code(request.contract_code)
+    
+    app_logger.info(f"Analyzing contract: {request.contract_name} ({len(sanitized_code)} chars)")
     
     # Run static analysis
-    static_result = static_analyzer.analyze(
-        request.contract_code,
-        request.contract_name
-    )
+    try:
+        static_result = static_analyzer.analyze(
+            sanitized_code,
+            request.contract_name
+        )
+        app_logger.info(f"Static analysis completed: {len(static_result.vulnerabilities)} vulnerabilities found")
+    except Exception as e:
+        app_logger.error(f"Static analysis failed: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Static analysis failed: {str(e)}"
+        )
     
-    # Run LLM audit if enabled and available
+    # Run LLM audit if enabled and available (use async if available)
     llm_result = None
     if request.use_llm_audit and llm_auditor:
         try:
-            llm_result = llm_auditor.audit(
-                request.contract_code,
-                request.contract_name
-            )
+            app_logger.info("Starting LLM audit...")
+            # Use async method if available (we're in async context)
+            if hasattr(llm_auditor, 'audit_async') and llm_auditor.async_client:
+                llm_result = await llm_auditor.audit_async(
+                    sanitized_code,
+                    request.contract_name
+                )
+            else:
+                # Fallback to sync (run in executor to avoid blocking)
+                import asyncio
+                loop = asyncio.get_event_loop()
+                llm_result = await loop.run_in_executor(
+                    None,
+                    llm_auditor.audit,
+                    sanitized_code,
+                    request.contract_name
+                )
+            app_logger.info(f"LLM audit completed: {llm_result.risk_assessment} (tokens: {llm_result.tokens_used})")
         except Exception as e:
-            print(f"LLM audit failed: {e}")
-            # Continue without LLM audit
+            app_logger.error(f"LLM audit failed: {e}", exc_info=True)
+            # Continue without LLM audit but log the error
+            # Don't fail the entire request if LLM fails
     
     # Calculate analysis time
     analysis_time_ms = int((time.time() - start_time) * 1000)
@@ -216,13 +266,8 @@ async def analyze_contract(request: ContractAnalysisRequest):
     Uses caching to avoid re-analyzing identical contracts
     """
     start_time = time.time()
-    if not request.contract_code or not request.contract_code.strip():
-        raise HTTPException(status_code=400, detail="Contract code cannot be empty")
-    if len(request.contract_code) > config.max_file_size_mb * 1024 * 1024:
-        raise HTTPException(
-            status_code=413,
-            detail=f"Contract code too large (max {config.max_file_size_mb}MB)"
-        )
+    
+    # Input validation is now handled in _analyze_static_and_llm
     
     # Check cache first (if available)
     if analysis_cache:
@@ -239,8 +284,11 @@ async def analyze_contract(request: ContractAnalysisRequest):
             analysis_cache.set(request.contract_code, request.contract_name, result_dict)
         
         return result
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        app_logger.error(f"Unexpected error in analyze_contract: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
 @app.post("/cross-validate", response_model=CrossValidateResponse)
@@ -258,7 +306,7 @@ async def cross_validate(request: CrossValidateRequest):
         )
 
     try:
-        analysis = _analyze_static_and_llm(
+        analysis = await _analyze_static_and_llm(
             ContractAnalysisRequest(
                 contract_code=request.contract_code,
                 contract_name=request.contract_name,
@@ -406,10 +454,13 @@ async def analyze_contract_sarif(request: ContractAnalysisRequest):
         raise HTTPException(status_code=400, detail="Contract code cannot be empty")
     
     try:
-        result = _analyze_static_and_llm(request, start_time)
+        result = await _analyze_static_and_llm(request, start_time)
         sarif = generate_sarif_report(result.dict() if hasattr(result, 'dict') else result)
         return JSONResponse(content=sarif, media_type="application/sarif+json")
+    except HTTPException:
+        raise
     except Exception as e:
+        app_logger.error(f"Error generating SARIF report: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 

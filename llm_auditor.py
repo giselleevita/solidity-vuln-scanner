@@ -1,6 +1,7 @@
 """
 LLM Auditor for Smart Contract Analysis
 Uses OpenAI/Claude to perform intelligent security auditing
+Supports both sync and async operations
 """
 
 import json
@@ -8,6 +9,12 @@ import os
 from typing import Optional, Dict, List
 import time
 from dataclasses import dataclass
+from app_config import get_config
+from logger_config import get_logger
+from exceptions import LLMAuditException
+
+logger = get_logger(__name__)
+config = get_config()
 
 
 @dataclass
@@ -58,6 +65,12 @@ class LLMAuditor:
                 import openai
                 # Initialize OpenAI client with only api_key to avoid version conflicts
                 self.client = openai.OpenAI(api_key=self.api_key)
+                # Also create async client
+                try:
+                    self.async_client = openai.AsyncOpenAI(api_key=self.api_key)
+                except Exception:
+                    self.async_client = None
+                    logger.warning("Async OpenAI client not available")
             except TypeError as e:
                 # Handle version compatibility issues gracefully
                 if "unexpected keyword argument" in str(e):
@@ -69,8 +82,11 @@ class LLMAuditor:
             try:
                 import anthropic
                 self.client = anthropic.Anthropic(api_key=self.api_key)
+                self.async_client = None  # Anthropic async support can be added later
             except ImportError:
                 raise ImportError("anthropic package not installed. Run: pip install anthropic")
+        
+        logger.info(f"LLM auditor initialized with provider: {provider}, model: {model}")
     
     def audit(self, contract_code: str, contract_name: str = "Contract") -> LLMAuditResult:
         """
@@ -92,9 +108,12 @@ class LLMAuditor:
                 risk_assessment="UNKNOWN"
             )
         
-        # Truncate large contracts
-        if len(contract_code) > 5000:
-            contract_code = contract_code[:5000] + "\n... [truncated]"
+        # Handle large contracts (use config limit, warn if truncated)
+        max_size = config.llm_max_contract_size
+        original_size = len(contract_code)
+        if original_size > max_size:
+            logger.warning(f"Contract code truncated from {original_size} to {max_size} chars for LLM analysis")
+            contract_code = contract_code[:max_size] + "\n... [truncated - contract too large for full analysis]"
         
         try:
             if self.provider == "openai":
@@ -104,17 +123,55 @@ class LLMAuditor:
             else:
                 raise ValueError(f"Unknown provider: {self.provider}")
         except Exception as e:
-            # Graceful fallback on LLM errors
+            logger.error(f"LLM audit failed: {e}", exc_info=True)
+            raise LLMAuditException(f"LLM audit failed: {str(e)}")
+    
+    async def audit_async(self, contract_code: str, contract_name: str = "Contract") -> LLMAuditResult:
+        """
+        Async version of audit method
+        
+        Args:
+            contract_code: Solidity source code
+            contract_name: Name of contract
+            
+        Returns:
+            LLMAuditResult with audit findings
+        """
+        if not contract_code.strip():
             return LLMAuditResult(
-                summary=f"LLM audit unavailable: {str(e)}",
-                recommendations=["Run additional static analysis tools like Slither or Mythril"],
+                summary="No contract code provided",
+                recommendations=[],
                 logic_vulnerabilities=[],
                 best_practices=[],
                 risk_assessment="UNKNOWN"
             )
+        
+        # Handle large contracts
+        max_size = config.llm_max_contract_size
+        original_size = len(contract_code)
+        if original_size > max_size:
+            logger.warning(f"Contract code truncated from {original_size} to {max_size} chars for LLM analysis")
+            contract_code = contract_code[:max_size] + "\n... [truncated - contract too large for full analysis]"
+        
+        try:
+            if self.provider == "openai" and self.async_client:
+                return await self._audit_with_openai_async(contract_code, contract_name)
+            elif self.provider == "openai":
+                # Fallback to sync if async client not available
+                logger.warning("Async client not available, using sync method")
+                return self.audit(contract_code, contract_name)
+            elif self.provider == "anthropic":
+                # Anthropic async can be added later
+                logger.warning("Async not yet supported for Anthropic, using sync method")
+                return self.audit(contract_code, contract_name)
+            else:
+                raise ValueError(f"Unknown provider: {self.provider}")
+        except Exception as e:
+            logger.error(f"Async LLM audit failed: {e}", exc_info=True)
+            raise LLMAuditException(f"LLM audit failed: {str(e)}")
     
     def _audit_with_openai(self, contract_code: str, contract_name: str) -> LLMAuditResult:
-        """Perform audit using OpenAI API"""
+        """Perform audit using OpenAI API (sync)"""
         
         prompt = self._build_audit_prompt(contract_code, contract_name)
         
@@ -137,14 +194,52 @@ class LLMAuditor:
             )
             
             response_text = response.choices[0].message.content
-            return self._parse_audit_response(response_text)
+            tokens_used = response.usage.total_tokens if hasattr(response, 'usage') else 0
+            result = self._parse_audit_response(response_text)
+            result.tokens_used = tokens_used
+            return result
             
         except Exception as e:
+            logger.warning(f"OpenAI JSON mode failed, trying fallback: {e}")
             # Fallback: try without JSON mode
             return self._audit_with_openai_fallback(contract_code, contract_name)
     
+    async def _audit_with_openai_async(self, contract_code: str, contract_name: str) -> LLMAuditResult:
+        """Perform audit using OpenAI API (async)"""
+        
+        prompt = self._build_audit_prompt(contract_code, contract_name)
+        
+        try:
+            response = await self.async_client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are an expert Solidity security auditor. Analyze smart contracts for vulnerabilities, logic flaws, and best practice violations. Return a valid JSON response."
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                temperature=0.3,
+                max_tokens=2000,
+                response_format={"type": "json_object"}
+            )
+            
+            response_text = response.choices[0].message.content
+            tokens_used = response.usage.total_tokens if hasattr(response, 'usage') else 0
+            result = self._parse_audit_response(response_text)
+            result.tokens_used = tokens_used
+            return result
+            
+        except Exception as e:
+            logger.warning(f"OpenAI async JSON mode failed, trying fallback: {e}")
+            # Fallback: try without JSON mode
+            return await self._audit_with_openai_fallback_async(contract_code, contract_name)
+    
     def _audit_with_openai_fallback(self, contract_code: str, contract_name: str) -> LLMAuditResult:
-        """Fallback audit without JSON mode"""
+        """Fallback audit without JSON mode (sync)"""
         
         simple_prompt = f"""Analyze this Solidity contract for security issues:
 
@@ -173,16 +268,63 @@ Provide a brief security assessment covering:
             )
             
             summary = response.choices[0].message.content
+            tokens_used = response.usage.total_tokens if hasattr(response, 'usage') else 0
             
             return LLMAuditResult(
                 summary=summary,
                 recommendations=["Conduct professional security audit for production deployment"],
                 logic_vulnerabilities=[],
                 best_practices=[],
-                risk_assessment="MEDIUM"
+                risk_assessment="MEDIUM",
+                tokens_used=tokens_used
             )
         except Exception as e:
-            raise e
+            logger.error(f"OpenAI fallback failed: {e}", exc_info=True)
+            raise LLMAuditException(f"LLM audit failed: {str(e)}")
+    
+    async def _audit_with_openai_fallback_async(self, contract_code: str, contract_name: str) -> LLMAuditResult:
+        """Fallback audit without JSON mode (async)"""
+        
+        simple_prompt = f"""Analyze this Solidity contract for security issues:
+
+{contract_code}
+
+Provide a brief security assessment covering:
+1. Critical vulnerabilities
+2. Recommendations
+3. Risk level (LOW/MEDIUM/HIGH/CRITICAL)"""
+        
+        try:
+            response = await self.async_client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are a Solidity security expert. Provide practical security advice."
+                    },
+                    {
+                        "role": "user",
+                        "content": simple_prompt
+                    }
+                ],
+                temperature=0.3,
+                max_tokens=1000
+            )
+            
+            summary = response.choices[0].message.content
+            tokens_used = response.usage.total_tokens if hasattr(response, 'usage') else 0
+            
+            return LLMAuditResult(
+                summary=summary,
+                recommendations=["Conduct professional security audit for production deployment"],
+                logic_vulnerabilities=[],
+                best_practices=[],
+                risk_assessment="MEDIUM",
+                tokens_used=tokens_used
+            )
+        except Exception as e:
+            logger.error(f"OpenAI async fallback failed: {e}", exc_info=True)
+            raise LLMAuditException(f"LLM audit failed: {str(e)}")
     
     def _audit_with_anthropic(self, contract_code: str, contract_name: str) -> LLMAuditResult:
         """Perform audit using Anthropic/Claude API"""
@@ -202,10 +344,14 @@ Provide a brief security assessment covering:
             )
             
             response_text = message.content[0].text
-            return self._parse_audit_response(response_text)
+            tokens_used = message.usage.input_tokens + message.usage.output_tokens if hasattr(message, 'usage') else 0
+            result = self._parse_audit_response(response_text)
+            result.tokens_used = tokens_used
+            return result
             
         except Exception as e:
-            raise e
+            logger.error(f"Anthropic API call failed: {e}", exc_info=True)
+            raise LLMAuditException(f"Anthropic audit failed: {str(e)}")
     
     def _build_audit_prompt(self, contract_code: str, contract_name: str) -> str:
         """Build the audit prompt for LLM"""

@@ -3,19 +3,25 @@ Middleware for FastAPI: Rate limiting, caching, and security
 """
 
 import time
+import hashlib
 from collections import defaultdict
 from functools import wraps
-from typing import Callable
+from typing import Callable, Optional
 from fastapi import Request, HTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
+from app_config import get_config
+from logger_config import get_logger
+
+logger = get_logger(__name__)
+config = get_config()
 
 
 class RateLimiter:
     """Simple in-memory rate limiter"""
     
-    def __init__(self, max_requests: int = 60, window_seconds: int = 60):
-        self.max_requests = max_requests
-        self.window_seconds = window_seconds
+    def __init__(self, max_requests: Optional[int] = None, window_seconds: Optional[int] = None):
+        self.max_requests = max_requests or config.rate_limit_max_requests
+        self.window_seconds = window_seconds or config.rate_limit_window_seconds
         self.requests = defaultdict(list)
     
     def is_allowed(self, key: str) -> bool:
@@ -87,16 +93,15 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 class AnalysisCache:
     """In-memory cache for analysis results"""
     
-    def __init__(self, max_size: int = 100, ttl_seconds: int = 3600):
+    def __init__(self, max_size: Optional[int] = None, ttl_seconds: Optional[int] = None):
         self.cache = {}
-        self.max_size = max_size
-        self.ttl_seconds = ttl_seconds
+        self.max_size = max_size or config.cache_max_size
+        self.ttl_seconds = ttl_seconds or config.cache_ttl_seconds
     
     def _generate_key(self, contract_code: str, contract_name: str) -> str:
-        """Generate cache key"""
-        import hashlib
+        """Generate cache key using SHA-256 (secure hash)"""
         content = f"{contract_code}:{contract_name}"
-        return hashlib.md5(content.encode()).hexdigest()
+        return hashlib.sha256(content.encode()).hexdigest()
     
     def get(self, contract_code: str, contract_name: str):
         """Get cached result"""
@@ -127,7 +132,13 @@ class AnalysisCache:
         self.cache.clear()
 
 
-# Global instances
-rate_limiter = RateLimiter(max_requests=60, window_seconds=60)
-analysis_cache = AnalysisCache(max_size=100, ttl_seconds=3600)
+# Global instances (use config values)
+rate_limiter = RateLimiter(
+    max_requests=config.rate_limit_max_requests,
+    window_seconds=config.rate_limit_window_seconds
+)
+analysis_cache = AnalysisCache(
+    max_size=config.cache_max_size,
+    ttl_seconds=config.cache_ttl_seconds
+)
 
