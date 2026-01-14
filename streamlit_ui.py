@@ -152,7 +152,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # API configuration
-API_URL = os.getenv("API_URL", "http://localhost:8000")
+API_URL = os.getenv("API_URL", "http://localhost:8001")
 USE_LLM_FEATURE = os.getenv("USE_LLM", "false").lower() == "true"
 
 def check_api_health():
@@ -187,6 +187,32 @@ def analyze_contract(code: str, name: str, use_llm: bool = False):
         )
         if response.status_code == 200:
             return response.json()
+        else:
+            st.error(f"API Error: {response.status_code} - {response.text}")
+            return None
+    except Exception as e:
+        st.error(f"Connection Error: {str(e)}\n\nMake sure the API server is running on {API_URL}")
+        return None
+
+def professional_audit(code: str, name: str, report_format: str = "json"):
+    """Call API for professional audit"""
+    try:
+        response = requests.post(
+            f"{API_URL}/professional-audit",
+            json={
+                "contract_code": code,
+                "contract_name": name,
+                "report_format": report_format
+            },
+            timeout=120
+        )
+        if response.status_code == 200:
+            if report_format == "pdf":
+                return {"pdf": response.content, "format": "pdf"}
+            elif report_format == "html":
+                return {"html": response.text, "format": "html"}
+            else:
+                return response.json()
         else:
             st.error(f"API Error: {response.status_code} - {response.text}")
             return None
@@ -286,8 +312,9 @@ with col3:
 st.divider()
 
 # Tabs
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "📋 Analyze",
+    "🏆 Professional Audit",
     "🔀 Cross-Validate",
     "📚 Documentation",
     "🎯 Examples",
@@ -485,7 +512,219 @@ contract Example {
                 use_container_width=True
             )
 
-# Tab 2: Cross-Validate
+# Tab 2: Professional Audit
+with tab2:
+    st.subheader("🏆 Professional Security Audit")
+    st.info("""
+    **Professional Audit Mode** provides comprehensive security analysis suitable for professional security audits.
+    Includes SWC compliance checking, code metrics, detailed remediation guidance, and compliance reporting.
+    """)
+    
+    with st.form("professional_audit_form"):
+        code = st.text_area(
+            "Solidity Code",
+            height=350,
+            placeholder="pragma solidity ^0.8.0; contract Example { ... }",
+            key="pro_audit_code",
+        )
+        name = st.text_input("Contract Name", value="Contract", key="pro_audit_name")
+        
+        report_format = st.selectbox(
+            "Report Format",
+            ["json", "html", "pdf"],
+            index=0,
+            help="Choose output format for the professional audit report"
+        )
+        
+        submitted = st.form_submit_button("🏆 Run Professional Audit", type="primary", use_container_width=True)
+    
+    if submitted:
+        if not code.strip():
+            st.error("⚠️ Please paste Solidity code.")
+        else:
+            with st.spinner("🏆 Running professional audit... This may take a few seconds."):
+                result = professional_audit(code, name, report_format)
+                
+                if result:
+                    if result.get("format") == "pdf":
+                        st.success("✅ Professional audit PDF generated!")
+                        st.download_button(
+                            "📥 Download PDF Report",
+                            result["pdf"],
+                            file_name=f"{name}_professional_audit.pdf",
+                            mime="application/pdf",
+                            use_container_width=True
+                        )
+                    elif result.get("format") == "html":
+                        st.success("✅ Professional audit HTML report generated!")
+                        st.download_button(
+                            "📥 Download HTML Report",
+                            result["html"],
+                            file_name=f"{name}_professional_audit.html",
+                            mime="text/html",
+                            use_container_width=True
+                        )
+                        st.divider()
+                        # Display HTML inline
+                        st.markdown(result["html"], unsafe_allow_html=True)
+                    else:
+                        # JSON format
+                        st.success("✅ Professional audit complete!")
+                        st.session_state.professional_audit_result = result
+                        st.rerun()
+    
+    # Display JSON results
+    if "professional_audit_result" in st.session_state:
+        result = st.session_state.professional_audit_result
+        
+        st.divider()
+        st.subheader("📊 Professional Audit Results")
+        
+        # Audit Metadata
+        metadata = result.get("audit_metadata", {})
+        st.markdown(f"""
+        **Contract:** {metadata.get('contract_name', 'N/A')}  
+        **Audit Date:** {metadata.get('analysis_date', 'N/A')}  
+        **Audit Version:** {metadata.get('audit_version', 'N/A')}  
+        **Confidence Level:** {metadata.get('confidence_level', 'N/A')}
+        """)
+        
+        # Risk Assessment
+        risk_assessment = result.get("risk_assessment", {})
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Risk Score", f"{risk_assessment.get('risk_score', 0):.1f}", "out of 100")
+        with col2:
+            severity = risk_assessment.get('overall_severity', 'UNKNOWN')
+            st.markdown(f"**Overall Severity:** {format_severity_badge(severity)}")
+        with col3:
+            st.metric("Total Vulnerabilities", len(result.get('vulnerabilities', [])))
+        
+        # Compliance Status
+        compliance = result.get("compliance", {})
+        st.divider()
+        st.subheader("📋 Compliance Assessment")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            compliance_status = compliance.get("status", "UNKNOWN")
+            if compliance_status == "COMPLIANT":
+                st.success(f"✅ **SWC Compliance:** {compliance_status}")
+            else:
+                st.error(f"❌ **SWC Compliance:** {compliance_status}")
+            
+            swc_issues = len(compliance.get("swc_findings", []))
+            st.write(f"**SWC Issues Found:** {swc_issues}")
+        
+        with col2:
+            # SWC Findings Summary
+            if compliance.get("swc_findings"):
+                st.write("**SWC-Classified Vulnerabilities:**")
+                for finding in compliance["swc_findings"][:5]:  # Show first 5
+                    st.write(f"- {finding['swc_id']}: {finding['swc_title']} ({finding['count']} found)")
+        
+        # Code Metrics
+        code_metrics = result.get("code_metrics", {})
+        st.divider()
+        st.subheader("📊 Code Metrics")
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Lines of Code", code_metrics.get("lines_of_code", 0))
+        with col2:
+            st.metric("Functions", code_metrics.get("function_count", 0))
+        with col3:
+            st.metric("Public Functions", code_metrics.get("public_function_count", 0))
+        with col4:
+            st.metric("Complexity", f"{code_metrics.get('cyclomatic_complexity', 0):.2f}")
+        
+        # Critical Findings
+        recommendations = result.get("recommendations", {})
+        if recommendations.get("critical_findings"):
+            st.divider()
+            st.subheader("🚨 Critical Findings")
+            for finding in recommendations["critical_findings"]:
+                st.error(f"⚠️ {finding}")
+        
+        # Recommendations
+        if recommendations.get("high_priority"):
+            st.divider()
+            st.subheader("💡 High Priority Recommendations")
+            for i, rec in enumerate(recommendations["high_priority"], 1):
+                st.write(f"{i}. {rec}")
+        
+        # Vulnerabilities with SWC Classification
+        vulnerabilities = result.get("vulnerabilities", [])
+        if vulnerabilities:
+            st.divider()
+            st.subheader("🔍 Detailed Vulnerability Findings")
+            
+            # Group by severity
+            severity_order = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"]
+            grouped = {}
+            for vuln in vulnerabilities:
+                sev = vuln.get('severity', 'INFO')
+                if sev not in grouped:
+                    grouped[sev] = []
+                grouped[sev].append(vuln)
+            
+            for severity in severity_order:
+                if severity in grouped:
+                    st.markdown(f"### {format_severity_badge(severity)} {severity} ({len(grouped[severity])} found)")
+                    
+                    for vuln in grouped[severity]:
+                        with st.expander(f"{vuln.get('type', 'Unknown').upper()} - Line {vuln.get('line', '?')} - SWC-{vuln.get('swc_id', 'N/A')}"):
+                            st.write(f"**SWC ID:** {vuln.get('swc_id', 'N/A')}")
+                            st.write(f"**SWC Title:** {vuln.get('swc_title', 'N/A')}")
+                            st.write(f"**CWE:** {vuln.get('cwe', 'N/A')}")
+                            st.write(f"**OWASP:** {vuln.get('owasp', 'N/A')}")
+                            st.write(f"**Description:** {vuln.get('description', 'N/A')}")
+                            st.write(f"**Confidence:** {vuln.get('confidence', 0):.1%}")
+                            st.write(f"**Impact:** {vuln.get('impact', 'N/A')}")
+                            
+                            st.code(vuln.get('code_snippet', ''), language='solidity')
+                            
+                            remediation = vuln.get('remediation_detailed', {})
+                            if isinstance(remediation, dict):
+                                st.write("**Remediation Pattern:**", remediation.get('pattern', vuln.get('remediation', 'N/A')))
+                                if remediation.get('example'):
+                                    st.write("**Example Fix:**")
+                                    st.code(remediation['example'], language='solidity')
+                                if remediation.get('libraries'):
+                                    st.write("**Recommended Libraries:**", ", ".join(remediation['libraries']))
+                            else:
+                                st.write("**Remediation:**", vuln.get('remediation', 'N/A'))
+        
+        # Export
+        st.divider()
+        st.subheader("📥 Export Professional Audit Report")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            json_str = json.dumps(result, indent=2)
+            st.download_button(
+                "📄 Download JSON",
+                json_str,
+                file_name=f"{name}_professional_audit.json",
+                mime="application/json",
+                use_container_width=True
+            )
+        
+        with col2:
+            # Generate HTML
+            try:
+                html_result = professional_audit(code, name, "html")
+                if html_result and html_result.get("html"):
+                    st.download_button(
+                        "📄 Download HTML",
+                        html_result["html"],
+                        file_name=f"{name}_professional_audit.html",
+                        mime="text/html",
+                        use_container_width=True
+                    )
+            except:
+                pass
+
+# Tab 3: Cross-Validate
 with tab4:
     st.subheader("🔀 Cross-Validate with External Tools")
     st.write("Run Slither and Mythril alongside our static analyzer for comprehensive security analysis.")

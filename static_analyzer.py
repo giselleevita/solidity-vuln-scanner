@@ -9,6 +9,7 @@ from typing import List, Optional, Dict, Tuple, Set
 from app_config import VULN_TYPES, SEVERITY_LEVELS, get_config
 from logger_config import get_logger
 from exceptions import PatternCompilationError, AnalysisException
+from swc_registry import get_swc_info
 
 logger = get_logger(__name__)
 config = get_config()
@@ -27,7 +28,8 @@ class Vulnerability:
     unique_id: Optional[str] = None  # For deduplication
     
     def to_dict(self):
-        return {
+        """Convert to dictionary with enhanced professional audit information"""
+        base_dict = {
             "type": self.vuln_type,
             "severity": self.severity,
             "line": self.line_number,
@@ -36,6 +38,18 @@ class Vulnerability:
             "remediation": self.remediation,
             "confidence": self.confidence
         }
+        
+        # Add SWC classification for professional audits
+        try:
+            swc_info = get_swc_info(self.vuln_type)
+            base_dict["swc_id"] = swc_info.get("swc_id", "N/A")
+            base_dict["swc_title"] = swc_info.get("swc_title", "N/A")
+            base_dict["cwe"] = swc_info.get("cwe", "N/A")
+            base_dict["owasp"] = swc_info.get("owasp", "N/A")
+        except:
+            pass  # Don't fail if SWC registry not available
+        
+        return base_dict
     
     def __hash__(self):
         """Hash for deduplication"""
@@ -206,6 +220,41 @@ class StaticAnalyzer:
                 "description": "Function without input validation checks",
                 "remediation": "Add require() statements to validate function inputs.",
                 "confidence_base": 0.3  # Lower confidence - many functions have validation in body
+            },
+            "front_running": {
+                "pattern": r"(?:require|if)\s*\(\s*.*?\s*(?:<|>|==|!=)\s*.*?\s*\)\s*.*?\.call|\.transfer|\.send",
+                "severity": "MEDIUM",
+                "description": "Transaction order dependence (front-running vulnerability)",
+                "remediation": "Use commit-reveal schemes or on-chain randomness to prevent front-running.",
+                "confidence_base": 0.6
+            },
+            "logic_error": {
+                "pattern": r"(?:require|assert)\s*\(\s*(?:false|true|0|1)\s*\)",
+                "severity": "MEDIUM",
+                "description": "Logic error: require/assert with constant values",
+                "remediation": "Review logic - constant require/assert indicates logic flaw.",
+                "confidence_base": 0.9
+            },
+            "centralization": {
+                "pattern": r"(?:onlyOwner|onlyAdmin)\s+function\s+(?:transfer|mint|burn|pause|unpause|setAdmin|setOwner)",
+                "severity": "MEDIUM",
+                "description": "Centralization risk: single point of control over critical functions",
+                "remediation": "Consider multi-signature, timelock, or decentralized governance mechanisms.",
+                "confidence_base": 0.8
+            },
+            "uninitialized_storage": {
+                "pattern": r"mapping|struct\s+\w+\s+[a-zA-Z_][a-zA-Z0-9_]*\s*;(?!.*=)",
+                "severity": "MEDIUM",
+                "description": "Uninitialized storage pointer",
+                "remediation": "Initialize storage variables before use.",
+                "confidence_base": 0.5
+            },
+            "locked_ether": {
+                "pattern": r"contract\s+\w+\s*\{[^}]*\}(?!.*payable)(?!.*receive)(?!.*fallback)",
+                "severity": "LOW",
+                "description": "Contract can receive ether but has no way to withdraw",
+                "remediation": "Add withdraw function or make contract payable with proper withdrawal mechanism.",
+                "confidence_base": 0.4
             }
         }
     
@@ -238,7 +287,7 @@ class StaticAnalyzer:
             # Precompute line offsets for performance
             line_offsets = self._compute_line_offsets(clean_code)
             
-            # Check each pattern
+            # Check each pattern with timeout protection
             all_vulnerabilities = []
             for vuln_key, vuln_config in self.pattern_configs.items():
                 try:
@@ -250,6 +299,11 @@ class StaticAnalyzer:
                         vuln_config
                     )
                     all_vulnerabilities.extend(matches)
+                    
+                    # Safety check: limit total vulnerabilities to prevent DoS
+                    if len(all_vulnerabilities) > 1000:
+                        logger.warning(f"Too many vulnerabilities found ({len(all_vulnerabilities)}), stopping analysis")
+                        break
                 except Exception as e:
                     logger.error(f"Error checking pattern {vuln_key}: {e}", exc_info=True)
                     # Continue with other patterns
@@ -312,7 +366,18 @@ class StaticAnalyzer:
             return vulnerabilities
         
         try:
+            # Limit matches per pattern to prevent ReDoS and excessive processing
+            max_matches_per_pattern = 100
+            matches_found = 0
+            
             for match in pattern.finditer(code):
+                matches_found += 1
+                
+                # Safety limit to prevent DoS attacks via ReDoS
+                if matches_found > max_matches_per_pattern:
+                    logger.warning(f"Pattern {vuln_key} found >{max_matches_per_pattern} matches, limiting results (DoS protection)")
+                    break
+                
                 start_pos = match.start()
                 line_num = self._get_line_number(start_pos, line_offsets)
                 

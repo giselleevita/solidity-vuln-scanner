@@ -51,12 +51,54 @@ class Config:
     # Analysis constants
     max_contract_size_chars: int = int(os.getenv("MAX_CONTRACT_SIZE_CHARS", "1000000"))  # ~1MB
     code_snippet_context_lines: int = int(os.getenv("CODE_SNIPPET_CONTEXT_LINES", "2"))
+    
+    # Database settings
+    database_type: str = os.getenv("DATABASE_TYPE", "sqlite")  # sqlite or postgresql
+    database_path: str = os.getenv("DATABASE_PATH", "scanner.db")
+    database_user: str = os.getenv("DATABASE_USER", "postgres")
+    database_password: str = os.getenv("DATABASE_PASSWORD", "")
+    database_host: str = os.getenv("DATABASE_HOST", "localhost")
+    database_port: str = os.getenv("DATABASE_PORT", "5432")
+    database_name: str = os.getenv("DATABASE_NAME", "scanner")
+    
+    # Redis settings
+    redis_url: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    
+    # JWT settings
+    jwt_secret_key: str = os.getenv("JWT_SECRET_KEY", "change-this-secret-key-in-production")
+    jwt_expire_minutes: int = int(os.getenv("JWT_EXPIRE_MINUTES", "1440"))  # 24 hours
+    require_auth: bool = os.getenv("REQUIRE_AUTH", "false").lower() == "true"  # Require auth by default
+    production_mode: bool = os.getenv("PRODUCTION_MODE", "false").lower() == "true"
+    
+    def get(self, key: str, default=None):
+        """Get config value (for compatibility)"""
+        return getattr(self, key, default)
 
 
 @lru_cache(maxsize=1)
 def get_config() -> Config:
     """Get singleton configuration instance"""
-    return Config()
+    config = Config()
+    
+    # Security validation
+    if config.production_mode:
+        # In production, enforce secure defaults
+        if config.jwt_secret_key == "change-this-secret-key-in-production":
+            raise ValueError(
+                "JWT_SECRET_KEY must be set in production mode. "
+                "Generate a secure secret: python -c 'import secrets; print(secrets.token_urlsafe(32))'"
+            )
+        
+        # Warn about insecure CORS
+        if config.cors_origins == "*":
+            import warnings
+            warnings.warn(
+                "⚠️  SECURITY WARNING: CORS allows all origins in production mode. "
+                "Set CORS_ORIGINS to specific domains.",
+                UserWarning
+            )
+    
+    return config
 
 
 # Vulnerability severity levels

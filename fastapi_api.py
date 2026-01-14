@@ -5,10 +5,12 @@ Provides endpoints for contract analysis and report generation
 
 import time
 import json
-from typing import Optional
+import asyncio
+from typing import Optional, List
 from datetime import datetime, timezone
-from fastapi import FastAPI, HTTPException, File, UploadFile
+from fastapi import FastAPI, HTTPException, File, UploadFile, Depends, Request
 from fastapi.responses import JSONResponse, HTMLResponse, Response
+from pathlib import Path
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
@@ -23,7 +25,46 @@ from exceptions import (
     PatternCompilationError, ScannerException
 )
 from input_validator import validate_contract_code, sanitize_contract_code, validate_contract_name
+from webhook_manager import webhook_manager
+from monitoring import MetricsMiddleware, record_analysis, get_metrics_endpoint, get_health_check
+
+# Optional PDF support
+try:
+    from pdf_report import generate_pdf_report_bytes
+    PDF_AVAILABLE = True
+except ImportError:
+    PDF_AVAILABLE = False
+    if 'app_logger' in globals():
+        app_logger.warning("PDF reports not available (reportlab not installed)")
+
+# Optional queue system
+try:
+    from queue_system import submit_analysis_job, get_job_status
+    QUEUE_AVAILABLE = True
+except ImportError:
+    QUEUE_AVAILABLE = False
+    if 'app_logger' in globals():
+        app_logger.warning("Queue system not available (celery/redis not installed)")
+    def submit_analysis_job(*args, **kwargs):
+        raise HTTPException(status_code=503, detail="Queue system not available")
+    def get_job_status(*args, **kwargs):
+        return {"status": "unavailable", "error": "Queue system not available"}
+
+from multi_file_analyzer import multi_file_analyzer
+try:
+    from professional_auditor import ProfessionalAuditor, ProfessionalAuditResult
+    from professional_report import (
+        generate_professional_audit_report_pdf,
+        generate_professional_audit_report_json,
+        generate_professional_audit_report_html
+    )
+    PROFESSIONAL_AUDIT_AVAILABLE = True
+except ImportError as e:
+    PROFESSIONAL_AUDIT_AVAILABLE = False
+    app_logger.warning(f"Professional audit features not available: {e}")
+from pathlib import Path
 import re
+import os
 
 # Import optional features
 try:
@@ -49,44 +90,18 @@ except ImportError as e:
     print("⚠️  Rate limiting middleware not available")
 
 
-# Request/Response models
-class ContractAnalysisRequest(BaseModel):
-    contract_code: str
-    contract_name: str = "Contract"
-    use_llm_audit: bool = True
-
-
-class ContractAnalysisResponse(BaseModel):
-    contract_name: str
-    analysis_date: str
-    risk_score: float
-    severity: str
-    vulnerabilities: list
-    llm_audit: Optional[dict] = None
-    lines_of_code: int
-    analysis_time_ms: int
-    slither: Optional[dict] = None
-    mythril: Optional[dict] = None
-
-
-class CrossValidateRequest(BaseModel):
-    contract_code: str
-    contract_name: str = "Contract"
-    run_slither: bool = False
-    run_mythril: bool = False
-    use_llm_audit: bool = True
-
-
-class CrossValidateResponse(BaseModel):
-    analysis: ContractAnalysisResponse
-    slither: Optional[dict] = None
-    mythril: Optional[dict] = None
-
-
-class HealthResponse(BaseModel):
-    status: str
-    version: str
-    llm_enabled: bool
+# Import shared models
+from models import (
+    ContractAnalysisRequest,
+    ContractAnalysisResponse,
+    CrossValidateRequest,
+    CrossValidateResponse,
+    HealthResponse,
+    ErrorResponse,
+    ProfessionalAuditRequest
+)
+from fastapi.responses import JSONResponse
+import uuid
 
 
 # Setup logging
@@ -100,17 +115,88 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Add CORS middleware (configurable)
+# Add request ID middleware for tracing
+@app.middleware("http")
+async def add_request_id(request: Request, call_next):
+    """Add unique request ID to each request for tracing"""
+    request_id = str(uuid.uuid4())
+    request.state.request_id = request_id
+    response = await call_next(request)
+    response.headers["X-Request-ID"] = request_id
+    return response
+
+# Global exception handler for standardized error responses
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """Standardized error response format"""
+    request_id = getattr(request.state, "request_id", "unknown")
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=ErrorResponse(
+            error=exc.detail if isinstance(exc.detail, str) else "An error occurred",
+            code=f"HTTP_{exc.status_code}",
+            message=exc.detail if isinstance(exc.detail, str) else None,
+            details={"request_id": request_id}
+        ).dict()
+    )
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request: Request, exc: Exception):
+    """Handle unexpected exceptions"""
+    request_id = getattr(request.state, "request_id", "unknown")
+    app_logger.error(f"Unhandled exception: {exc}", exc_info=True, extra={"request_id": request_id})
+    return JSONResponse(
+        status_code=500,
+        content=ErrorResponse(
+            error="Internal server error",
+            code="INTERNAL_ERROR",
+            message="An unexpected error occurred",
+            details={"request_id": request_id}
+        ).dict()
+    )
+
+# Include versioned API router (after app creation to avoid circular imports)
+# Defer import to avoid circular dependency
+def _include_v1_router():
+    try:
+        from api_v1 import router as v1_router
+        app.include_router(v1_router)
+        app_logger.info("API v1 router included")
+    except Exception as e:
+        app_logger.warning(f"Failed to include v1 router: {e}")
+
+# Call after app is fully initialized
+_include_v1_router()
+
+# Add CORS middleware (configurable with security restrictions)
 config = get_config()
-cors_origins = ["*"] if config.cors_origins == "*" else [origin.strip() for origin in config.cors_origins.split(",")]
+if config.cors_origins == "*":
+    cors_origins = ["*"]
+    # Security warning: wildcard + credentials is dangerous
+    if config.production_mode:
+        app_logger.warning(
+            "⚠️  SECURITY WARNING: CORS allows all origins with credentials enabled. "
+            "This is insecure. Set CORS_ORIGINS to specific domains in production."
+        )
+    # Disable credentials when using wildcard (security best practice)
+    allow_creds = False
+else:
+    cors_origins = [origin.strip() for origin in config.cors_origins.split(",") if origin.strip()]
+    allow_creds = True  # Safe to allow credentials with specific origins
+
+# Default to localhost if no origins specified and not wildcard
+if not cors_origins or (cors_origins == ["*"] and config.production_mode):
+    cors_origins = ["http://localhost:8501", "http://localhost:3000"]
+    app_logger.warning("CORS origins defaulted to localhost. Set CORS_ORIGINS for production.")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_credentials=allow_creds,
+    allow_methods=["GET", "POST", "OPTIONS"],  # Restrict methods
+    allow_headers=["Content-Type", "Authorization", "X-API-Key"],  # Restrict headers
 )
-app_logger.info(f"CORS configured with origins: {cors_origins}")
+app_logger.info(f"CORS configured with origins: {cors_origins}, credentials: {allow_creds}")
 
 # Add rate limiting middleware (only if available)
 if RateLimitMiddleware is not None and rate_limiter is not None:
@@ -166,6 +252,114 @@ async def health_check():
         version="1.0.0",
         llm_enabled=llm_auditor is not None
     )
+
+
+@app.get("/health/detailed")
+async def health_check_detailed():
+    """Detailed health check with system metrics"""
+    return get_health_check()
+
+
+@app.get("/metrics")
+async def metrics():
+    """Prometheus metrics endpoint"""
+    from monitoring import generate_latest, CONTENT_TYPE_LATEST
+    from fastapi.responses import Response
+    return Response(
+        content=generate_latest(),
+        media_type=CONTENT_TYPE_LATEST
+    )
+
+
+@app.post("/analyze-async")
+async def analyze_contract_async(request: ContractAnalysisRequest):
+    """Submit analysis job to queue (async processing)"""
+    if not QUEUE_AVAILABLE:
+        raise HTTPException(
+            status_code=503,
+            detail="Queue system not available. Install celery and redis: pip install celery redis"
+        )
+    try:
+        task_id = submit_analysis_job(
+            request.contract_code,
+            request.contract_name,
+            request.use_llm_audit
+        )
+        return {
+            "task_id": task_id,
+            "status": "submitted",
+            "message": "Analysis job submitted to queue"
+        }
+    except Exception as e:
+        logger.error(f"Failed to submit job: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to submit job: {str(e)}")
+
+
+@app.get("/jobs/{task_id}")
+async def get_job(task_id: str):
+    """Get status of an analysis job"""
+    status = get_job_status(task_id)
+    return status
+
+
+@app.post("/analyze-project")
+async def analyze_project(file: UploadFile = File(...)):
+    """Analyze a project (zip file with contracts) with secure file handling"""
+    import zipfile
+    import tempfile
+    from input_validator import sanitize_filename
+    
+    if not file.filename or not file.filename.endswith('.zip'):
+        raise HTTPException(status_code=400, detail="File must be a .zip archive")
+    
+    # Sanitize filename
+    safe_filename = sanitize_filename(file.filename)
+    
+    try:
+        # Use secure temporary directory (auto-cleans up)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Save uploaded file to secure location
+            temp_zip_path = os.path.join(tmpdir, safe_filename)
+            content = await file.read()
+            
+            # Check file size before writing
+            max_size = config.max_file_size_mb * 1024 * 1024
+            if len(content) > max_size:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"File too large ({len(content)} bytes, max {max_size} bytes)"
+                )
+            
+            with open(temp_zip_path, 'wb') as f:
+                f.write(content)
+            
+            # Extract and analyze (zipfile auto-handles traversal attempts)
+            extract_dir = os.path.join(tmpdir, "extracted")
+            os.mkdir(extract_dir)
+            
+            with zipfile.ZipFile(temp_zip_path, 'r') as zip_ref:
+                # Validate zip file first
+                zip_ref.testzip()
+                # Extract to secure directory
+                zip_ref.extractall(extract_dir)
+            
+            project_path = Path(extract_dir)
+            results = multi_file_analyzer.analyze_project(project_path)
+            
+            # Convert Path objects to strings for JSON serialization
+            return {
+                "project_type": multi_file_analyzer.detect_project_type(project_path),
+                "files_analyzed": len(results),
+                "results": {
+                    str(k): v.to_dict() for k, v in results.items()
+                }
+            }
+            # Temporary directory auto-cleans up here
+    except zipfile.BadZipFile:
+        raise HTTPException(status_code=400, detail="Invalid zip file")
+    except Exception as e:
+        logger.error(f"Project analysis failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Project analysis failed: {str(e)}")
 
 
 async def _analyze_static_and_llm(request: ContractAnalysisRequest, start_time: float):
@@ -282,6 +476,30 @@ async def analyze_contract(request: ContractAnalysisRequest):
         if analysis_cache and not request.use_llm_audit:
             result_dict = result.dict() if hasattr(result, 'dict') else result
             analysis_cache.set(request.contract_code, request.contract_name, result_dict)
+        
+        # Record metrics
+        try:
+            result_dict = result.dict() if hasattr(result, 'dict') else result
+            record_analysis(
+                severity=result_dict.get('severity', 'UNKNOWN'),
+                has_llm=result_dict.get('llm_audit') is not None,
+                duration=(time.time() - start_time),
+                analysis_type="static",
+                vulnerability_count=len(result_dict.get('vulnerabilities', [])),
+                vulnerabilities=result_dict.get('vulnerabilities', [])
+            )
+        except Exception as e:
+            app_logger.warning(f"Metrics recording failed: {e}")
+        
+        # Trigger webhooks (async, don't wait)
+        try:
+            result_dict = result.dict() if hasattr(result, 'dict') else result
+            asyncio.create_task(webhook_manager.notify_analysis_completed(
+                request.contract_name,
+                result_dict
+            ))
+        except Exception as e:
+            app_logger.warning(f"Webhook notification failed: {e}")
         
         return result
     except HTTPException:
@@ -464,23 +682,178 @@ async def analyze_contract_sarif(request: ContractAnalysisRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/")
-async def root():
-    """Root endpoint with API documentation"""
+@app.post("/analyze-pdf")
+async def analyze_contract_pdf(request: ContractAnalysisRequest):
+    """Analyze contract and return PDF report"""
+    if not PDF_AVAILABLE:
+        raise HTTPException(
+            status_code=503,
+            detail="PDF reports not available. Install reportlab: pip install reportlab"
+        )
+    
+    from fastapi.responses import Response
+    
+    start_time = time.time()
+    try:
+        result = await _analyze_static_and_llm(request, start_time)
+        result_dict = result.dict() if hasattr(result, 'dict') else result
+        pdf_bytes = generate_pdf_report_bytes(result_dict)
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="{request.contract_name}_audit.pdf"'
+            }
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        app_logger.error(f"Error generating PDF: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/webhooks/register")
+async def register_webhook(
+    url: str,
+    events: Optional[List[str]] = None,
+    secret: Optional[str] = None
+):
+    """Register a webhook URL"""
+    webhook_id = webhook_manager.register_webhook(url, events, secret)
+    return {"webhook_id": webhook_id, "url": url, "status": "registered"}
+
+
+@app.delete("/webhooks/{webhook_id}")
+async def unregister_webhook(webhook_id: str):
+    """Unregister a webhook"""
+    success = webhook_manager.unregister_webhook(webhook_id)
+    if success:
+        return {"status": "unregistered", "webhook_id": webhook_id}
+    else:
+        raise HTTPException(status_code=404, detail="Webhook not found")
+
+
+@app.get("/webhooks")
+async def list_webhooks():
+    """List all registered webhooks"""
     return {
+        "webhooks": [
+            {
+                "id": w["id"],
+                "url": w["url"],
+                "events": w["events"],
+                "active": w["active"],
+                "created_at": w["created_at"]
+            }
+            for w in webhook_manager.webhooks
+        ]
+    }
+
+
+@app.post("/professional-audit")
+async def professional_audit(request: ProfessionalAuditRequest):
+    """
+    Professional security audit endpoint
+    Provides comprehensive analysis suitable for professional security audits
+    Includes SWC compliance, code metrics, and detailed remediation guidance
+    
+    Formats: json (default), html, pdf
+    """
+    if not PROFESSIONAL_AUDIT_AVAILABLE:
+        raise HTTPException(
+            status_code=503,
+            detail="Professional audit features not available. Check dependencies."
+        )
+    
+    start_time = time.time()
+    
+    try:
+        # Input validation
+        is_valid, error_msg = validate_contract_code(request.contract_code)
+        if not is_valid:
+            raise HTTPException(status_code=400, detail=error_msg)
+        
+        # Sanitize input
+        sanitized_code = sanitize_contract_code(request.contract_code)
+        
+        # Perform professional audit
+        professional_auditor = ProfessionalAuditor()
+        audit_result = professional_auditor.audit(sanitized_code, request.contract_name)
+        
+        # Generate report based on format
+        if request.report_format == "pdf":
+            if not PDF_AVAILABLE:
+                raise HTTPException(
+                    status_code=503,
+                    detail="PDF reports not available. Install reportlab: pip install reportlab"
+                )
+            
+            pdf_bytes = generate_professional_audit_report_pdf(audit_result)
+            return Response(
+                content=pdf_bytes,
+                media_type="application/pdf",
+                headers={
+                    "Content-Disposition": f'attachment; filename="{request.contract_name}_professional_audit.pdf"'
+                }
+            )
+        elif request.report_format == "html":
+            html_content = generate_professional_audit_report_html(audit_result)
+            return HTMLResponse(content=html_content)
+        else:  # json (default)
+            return JSONResponse(content=audit_result.to_dict())
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        app_logger.error(f"Professional audit failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Professional audit failed: {str(e)}")
+
+
+@app.get("/swc-registry")
+async def get_swc_registry():
+    """Get SWC (Smart Contract Weakness Classification) registry"""
+    from swc_registry import SWC_REGISTRY, get_all_swc_ids
+    return {
+        "swc_registry": SWC_REGISTRY,
+        "supported_swc_ids": get_all_swc_ids(),
+        "total_swc_issues_detected": len(SWC_REGISTRY)
+    }
+
+
+@app.get("/", response_class=HTMLResponse)
+async def root():
+    """Homepage - Serve explanatory HTML page"""
+    try:
+        # Try to serve the static homepage
+        index_path = Path(__file__).parent / "static" / "index.html"
+        if index_path.exists():
+            html_content = index_path.read_text(encoding='utf-8')
+            return HTMLResponse(content=html_content)
+    except Exception as e:
+        app_logger.warning(f"Could not serve static homepage: {e}")
+    
+    # Fallback to JSON response
+    return JSONResponse({
         "name": "Solidity Vuln Scanner API",
         "version": "1.0.0",
+        "message": "Welcome! Visit /docs for API documentation or http://localhost:8501 for the Web UI",
+        "api_versions": ["v1"],
         "endpoints": {
+            "homepage": "/",
+            "docs": "/docs",
+            "web_ui": "http://localhost:8501",
             "health": "/health",
             "analyze": "POST /analyze",
             "analyze-sarif": "POST /analyze-sarif",
+            "analyze-pdf": "POST /analyze-pdf",
             "batch": "POST /analyze-batch",
             "upload": "POST /upload-and-analyze",
             "vulnerabilities": "GET /vulnerabilities",
-            "docs": "/docs"
+            "webhooks": "POST /webhooks/register",
+            "v1": "/v1/* (versioned API)"
         },
         "docs": "Visit /docs for interactive API documentation"
-    }
+    })
 
 
 def main():

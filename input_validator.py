@@ -3,6 +3,8 @@ Input validation and sanitization for contract code
 """
 
 import re
+import unicodedata
+from pathlib import Path
 from typing import Tuple, Optional
 from app_config import get_config
 from logger_config import get_logger
@@ -65,13 +67,53 @@ def sanitize_contract_code(contract_code: str) -> str:
     # Remove null bytes
     sanitized = contract_code.replace('\x00', '')
     
+    # Normalize Unicode (prevent homograph attacks and normalize variants)
+    try:
+        sanitized = unicodedata.normalize('NFKC', sanitized)
+    except Exception as e:
+        logger.warning(f"Unicode normalization failed: {e}")
+    
+    # Remove control characters except newline, tab, and carriage return
+    # This prevents hidden control chars that could cause issues
+    sanitized = ''.join(
+        c for c in sanitized 
+        if unicodedata.category(c)[0] != 'C' or c in '\n\t\r'
+    )
+    
     # Normalize line endings
     sanitized = sanitized.replace('\r\n', '\n').replace('\r', '\n')
     
-    # Remove trailing whitespace (optional, but cleaner)
-    # We'll keep it for now to preserve formatting
-    
     return sanitized
+
+
+def sanitize_filename(filename: str) -> str:
+    """
+    Sanitize filename to prevent path traversal and command injection
+    
+    Args:
+        filename: Original filename
+        
+    Returns:
+        Sanitized filename safe for use in file operations
+    """
+    # Get just the basename (no directory traversal)
+    safe_name = Path(filename).name
+    
+    # Remove any remaining path separators
+    safe_name = safe_name.replace('/', '').replace('\\', '')
+    
+    # Remove control characters and dangerous characters
+    safe_name = ''.join(c for c in safe_name if c.isprintable() and c not in '<>:"|?*')
+    
+    # Limit length
+    if len(safe_name) > 255:
+        safe_name = safe_name[:255]
+    
+    # Ensure it's not empty or just dots
+    if not safe_name or safe_name in ('.', '..'):
+        safe_name = "contract.sol"
+    
+    return safe_name
 
 
 def validate_contract_name(contract_name: str) -> Tuple[bool, Optional[str]]:

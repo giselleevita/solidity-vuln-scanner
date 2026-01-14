@@ -130,9 +130,14 @@ def run_slither(contract_code: str, filename: str = "Contract.sol", timeout: int
             return _run_slither_docker(contract_code, filename, timeout)
         return False, "❌ Slither not installed.\n\nInstallation options:\n  1. Local: pip install slither-analyzer\n  2. Docker: docker-compose up (recommended)\n\nOr visit: https://github.com/crytic/slither"
 
+    from input_validator import sanitize_filename
+    
+    # Sanitize filename
+    safe_filename = sanitize_filename(filename)
+    
     with tempfile.TemporaryDirectory() as tmpdir:
         try:
-            path = Path(tmpdir) / filename
+            path = Path(tmpdir) / safe_filename
             path.write_text(contract_code, encoding='utf-8')
             
             # Run slither with JSON output for better parsing
@@ -151,13 +156,20 @@ def run_slither(contract_code: str, filename: str = "Contract.sol", timeout: int
 
 
 def _run_slither_docker(contract_code: str, filename: str, timeout: int) -> Tuple[bool, str]:
-    """Run Slither using Docker container"""
+    """Run Slither using Docker container with secure file handling"""
+    from input_validator import sanitize_filename
+    
+    # Sanitize filename to prevent path traversal and command injection
+    safe_filename = sanitize_filename(filename)
+    
+    # Use secure temporary directory (auto-cleans up)
     try:
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.sol', delete=False) as f:
-            f.write(contract_code)
-            temp_path = f.name
-        
-        try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Write to secure temporary file
+            temp_path = os.path.join(tmpdir, safe_filename)
+            with open(temp_path, 'w', encoding='utf-8') as f:
+                f.write(contract_code)
+            
             # Build Docker image if needed
             docker_image = "slither-scanner:latest"
             build_cmd = [
@@ -166,11 +178,12 @@ def _run_slither_docker(contract_code: str, filename: str, timeout: int) -> Tupl
             ]
             subprocess.run(build_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)
             
-            # Run Slither in container
-            container_path = f"/tmp/{filename}"
+            # Run Slither in container with sanitized path
+            # Use absolute path to prevent traversal
+            container_path = f"/tmp/{safe_filename}"
             cmd = [
                 "docker", "run", "--rm",
-                "-v", f"{temp_path}:{container_path}:ro",
+                "-v", f"{temp_path}:{container_path}:ro",  # Read-only mount
                 docker_image,
                 container_path, "--json", "-"
             ]
@@ -182,8 +195,7 @@ def _run_slither_docker(contract_code: str, filename: str, timeout: int) -> Tupl
                 result = _run_cmd(cmd, timeout=timeout)
             
             return result
-        finally:
-            os.unlink(temp_path)
+            # Temporary directory auto-cleans up here
     except Exception as e:
         return False, f"Docker error: {str(e)}. Try local installation: pip install slither-analyzer"
 
@@ -216,9 +228,14 @@ def run_mythril(contract_code: str, filename: str = "Contract.sol", timeout: int
             return _run_mythril_docker(contract_code, filename, timeout)
         return False, "❌ Mythril not installed.\n\nInstallation options:\n  1. Local: pip install mythril\n  2. Docker: docker-compose up (recommended)\n\nOr visit: https://github.com/Consensys/mythril"
 
+    from input_validator import sanitize_filename
+    
+    # Sanitize filename
+    safe_filename = sanitize_filename(filename)
+    
     with tempfile.TemporaryDirectory() as tmpdir:
         try:
-            path = Path(tmpdir) / filename
+            path = Path(tmpdir) / safe_filename
             path.write_text(contract_code, encoding='utf-8')
             
             # Mythril analyze command
@@ -233,13 +250,20 @@ def run_mythril(contract_code: str, filename: str = "Contract.sol", timeout: int
 
 
 def _run_mythril_docker(contract_code: str, filename: str, timeout: int) -> Tuple[bool, str]:
-    """Run Mythril using Docker container"""
+    """Run Mythril using Docker container with secure file handling"""
+    from input_validator import sanitize_filename
+    
+    # Sanitize filename to prevent path traversal and command injection
+    safe_filename = sanitize_filename(filename)
+    
+    # Use secure temporary directory (auto-cleans up)
     try:
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.sol', delete=False) as f:
-            f.write(contract_code)
-            temp_path = f.name
-        
-        try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Write to secure temporary file
+            temp_path = os.path.join(tmpdir, safe_filename)
+            with open(temp_path, 'w', encoding='utf-8') as f:
+                f.write(contract_code)
+            
             # Build Docker image if needed
             docker_image = "mythril-scanner:latest"
             build_cmd = [
@@ -248,18 +272,17 @@ def _run_mythril_docker(contract_code: str, filename: str, timeout: int) -> Tupl
             ]
             subprocess.run(build_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)
             
-            # Run Mythril in container
-            container_path = f"/tmp/{filename}"
+            # Run Mythril in container with sanitized path
+            container_path = f"/tmp/{safe_filename}"
             cmd = [
                 "docker", "run", "--rm",
-                "-v", f"{temp_path}:{container_path}:ro",
+                "-v", f"{temp_path}:{container_path}:ro",  # Read-only mount
                 docker_image,
                 "analyze", container_path, "--execution-timeout", "60", "--max-depth", "10"
             ]
             
             return _run_cmd(cmd, timeout=timeout)
-        finally:
-            os.unlink(temp_path)
+            # Temporary directory auto-cleans up here
     except Exception as e:
         return False, f"Docker error: {str(e)}. Try local installation: pip install mythril"
 

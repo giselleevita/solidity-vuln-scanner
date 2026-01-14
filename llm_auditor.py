@@ -6,12 +6,25 @@ Supports both sync and async operations
 
 import json
 import os
+import asyncio
 from typing import Optional, Dict, List
 import time
 from dataclasses import dataclass
 from app_config import get_config
 from logger_config import get_logger
 from exceptions import LLMAuditException
+
+# Retry logic
+try:
+    from tenacity import (
+        retry,
+        stop_after_attempt,
+        wait_exponential,
+        retry_if_exception_type
+    )
+    RETRY_AVAILABLE = True
+except ImportError:
+    RETRY_AVAILABLE = False
 
 logger = get_logger(__name__)
 config = get_config()
@@ -205,28 +218,52 @@ class LLMAuditor:
             return self._audit_with_openai_fallback(contract_code, contract_name)
     
     async def _audit_with_openai_async(self, contract_code: str, contract_name: str) -> LLMAuditResult:
-        """Perform audit using OpenAI API (async)"""
+        """Perform audit using OpenAI API (async) with retry logic"""
         
         prompt = self._build_audit_prompt(contract_code, contract_name)
         
+        # Retry function with exponential backoff
+        async def _call_api_with_retry():
+            max_attempts = 3
+            for attempt in range(max_attempts):
+                try:
+                    response = await asyncio.wait_for(
+                        self.async_client.chat.completions.create(
+                            model=self.model,
+                            messages=[
+                                {
+                                    "role": "system",
+                                    "content": "You are an expert Solidity security auditor. Analyze smart contracts for vulnerabilities, logic flaws, and best practice violations. Return a valid JSON response."
+                                },
+                                {
+                                    "role": "user",
+                                    "content": prompt
+                                }
+                            ],
+                            temperature=0.3,
+                            max_tokens=2000,
+                            response_format={"type": "json_object"}
+                        ),
+                        timeout=60.0  # 60 second timeout
+                    )
+                    return response
+                except asyncio.TimeoutError:
+                    if attempt < max_attempts - 1:
+                        wait_time = 2 ** attempt  # Exponential backoff: 1s, 2s, 4s
+                        logger.warning(f"OpenAI API timeout (attempt {attempt + 1}/{max_attempts}), retrying in {wait_time}s...")
+                        await asyncio.sleep(wait_time)
+                    else:
+                        raise LLMAuditException("OpenAI API request timed out after 3 attempts")
+                except Exception as e:
+                    if attempt < max_attempts - 1:
+                        wait_time = 2 ** attempt
+                        logger.warning(f"OpenAI API error (attempt {attempt + 1}/{max_attempts}): {e}, retrying in {wait_time}s...")
+                        await asyncio.sleep(wait_time)
+                    else:
+                        raise
+        
         try:
-            response = await self.async_client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are an expert Solidity security auditor. Analyze smart contracts for vulnerabilities, logic flaws, and best practice violations. Return a valid JSON response."
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ],
-                temperature=0.3,
-                max_tokens=2000,
-                response_format={"type": "json_object"}
-            )
-            
+            response = await _call_api_with_retry()
             response_text = response.choices[0].message.content
             tokens_used = response.usage.total_tokens if hasattr(response, 'usage') else 0
             result = self._parse_audit_response(response_text)
