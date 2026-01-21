@@ -1,6 +1,13 @@
 # Solidity Vuln Scanner
 
-**AI-powered vulnerability detection for Ethereum smart contracts using static analysis and LLM-based auditing.**
+**Professional-grade security audit toolkit for Ethereum smart contracts.**  
+Combines deterministic static analysis, optional LLM auditing, and external tool cross‑validation to produce **SWC‑mapped findings**, compliance context (CWE/OWASP/DASP), and **professional audit reports** (JSON/HTML/PDF).
+
+**What it’s for:**  
+- Pre‑deployment security assessments  
+- CI/CD security gates (SARIF support)  
+- Supporting manual audits with standardized findings  
+- Professional audit documentation and remediation guidance  
 
 ---
 
@@ -54,13 +61,14 @@ See [docs/INSTALL.md](docs/INSTALL.md) for detailed setup.
 
 ## ✨ Features
 
-- **Static Analysis**: Pattern-based detection of 15+ vulnerability types (reentrancy, unchecked calls, overflow/underflow, access control, etc.)
+- **Static Analysis**: Pattern-based detection of 18+ vulnerability types (reentrancy, unchecked calls, overflow/underflow, access control, etc.)
+- **Professional Audit**: SWC/CWE/OWASP/DASP classification with compliance summary
 - **LLM Audit**: Optional AI-powered analysis using OpenAI GPT-4o or Claude
-- **Risk Scoring**: Vulnerability severity rating (Critical, High, Medium, Low, Info)
+- **Risk Scoring**: Severity rating plus confidence levels and code metrics
 - **Cross-Validation**: Integration with Slither and Mythril
 - **REST API**: FastAPI backend for integration
 - **Web UI**: Streamlit interface for easy contract analysis
-- **Report Generation**: JSON, HTML, and Markdown reports
+- **Report Generation**: JSON, HTML, PDF, SARIF
 
 ---
 
@@ -72,6 +80,7 @@ See [docs/INSTALL.md](docs/INSTALL.md) for detailed setup.
 - **[Docker Guide](docs/DOCKER.md)** - Containerized deployment
 - **[Architecture](docs/ARCHITECTURE.md)** - System design and performance characteristics
 - **[Security & Limitations](SECURITY.md)** - Responsible usage guidelines
+- **[Professional Audit Guide](PROFESSIONAL_AUDIT_GUIDE.md)** - Professional audit workflow and reporting
 
 ---
 
@@ -121,7 +130,7 @@ See [docs/INSTALL.md](docs/INSTALL.md) for detailed instructions.
 
 ```bash
 # Analyze a contract (static analysis only)
-curl -X POST "http://localhost:8000/analyze" \
+curl -X POST "http://localhost:8001/analyze" \
   -H "Content-Type: application/json" \
   -d '{
     "contract_code": "pragma solidity ^0.8.0; contract X { function f() public {} }",
@@ -130,7 +139,7 @@ curl -X POST "http://localhost:8000/analyze" \
   }'
 
 # Analyze with SARIF output (for CI/CD)
-curl -X POST "http://localhost:8000/analyze-sarif" \
+curl -X POST "http://localhost:8001/analyze-sarif" \
   -H "Content-Type: application/json" \
   -d '{
     "contract_code": "pragma solidity ^0.8.0; contract X { function f() public {} }",
@@ -139,7 +148,7 @@ curl -X POST "http://localhost:8000/analyze-sarif" \
   }'
 
 # Cross-validate with external tools
-curl -X POST "http://localhost:8000/cross-validate" \
+curl -X POST "http://localhost:8001/cross-validate" \
   -H "Content-Type: application/json" \
   -d '{
     "contract_code": "pragma solidity ^0.8.0; contract X { function f() public {} }",
@@ -149,7 +158,7 @@ curl -X POST "http://localhost:8000/cross-validate" \
   }'
 
 # Batch analysis (multiple contracts)
-curl -X POST "http://localhost:8000/analyze-batch" \
+curl -X POST "http://localhost:8001/analyze-batch" \
   -H "Content-Type: application/json" \
   -d '[
     {"contract_code": "...", "contract_name": "Contract1"},
@@ -157,7 +166,19 @@ curl -X POST "http://localhost:8000/analyze-batch" \
   ]'
 ```
 
-**API Documentation:** Interactive docs available at `http://localhost:8000/docs` (Swagger UI)
+**API Documentation:** Interactive docs available at `http://localhost:8001/docs` (Swagger UI)
+
+### Professional Audit Endpoint
+
+```bash
+curl -X POST "http://localhost:8001/professional-audit" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "contract_code": "pragma solidity ^0.8.0; contract X { function f() public {} }",
+    "contract_name": "X",
+    "report_format": "pdf"
+  }' --output audit_report.pdf
+```
 
 See [docs/USAGE.md](docs/USAGE.md) for more examples and workflows.
 
@@ -192,7 +213,7 @@ pytest benchmarks/test_performance.py -v
 
 ## 📊 What Gets Detected?
 
-The scanner detects **15 vulnerability types** using pattern-based analysis:
+The scanner detects **18+ vulnerability types** using pattern-based analysis:
 
 | Vulnerability | Severity | Description |
 |--------------|----------|-------------|
@@ -211,6 +232,8 @@ The scanner detects **15 vulnerability types** using pattern-based analysis:
 | **Logic Error** | Medium | Common logic mistakes |
 | **Centralization Risk** | Medium | Single point of control |
 | **Missing Input Validation** | High | Unvalidated function parameters |
+| **Uninitialized Storage** | Medium | Uninitialized storage pointer |
+| **Locked Ether** | Low | Ether locked with no withdrawal path |
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed detection methods and limitations.
 
@@ -224,8 +247,8 @@ docker-compose up --build
 
 # Access
 # - UI: http://localhost:8501
-# - API: http://localhost:8000
-# - API Docs: http://localhost:8000/docs
+# - API: http://localhost:8001
+# - API Docs: http://localhost:8001/docs
 ```
 
 See [docs/DOCKER.md](docs/DOCKER.md) for detailed Docker guide and troubleshooting.
@@ -244,7 +267,7 @@ LLM_API_KEY=sk-...               # Your API key
 LLM_MODEL=gpt-4o-mini            # Model name
 
 # API Settings
-API_PORT=8000
+API_PORT=8001
 API_HOST=0.0.0.0
 DEBUG=False
 ```
@@ -294,4 +317,4 @@ MIT License – see [LICENSE](LICENSE) file.
 
 ---
 
-**Last updated**: December 2025
+**Last updated**: January 2026
