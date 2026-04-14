@@ -1,0 +1,24 @@
+name: Solidity Scanner SARIF Gate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  solidity-sarif:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Solidity scan action
+        uses: ./.github/actions/solidity-scan
+        with:
+          api-key: ${{ secrets.SOLIDITY_SCANNER_API_KEY }}
+          paths: contracts/**/*.sol
+          report-format: sarif
+          severity-gate: high

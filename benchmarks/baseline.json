@@ -1,0 +1,28 @@
+{
+  "version": "1.0.0",
+  "last_updated": "2025-01-01",
+  "description": "Baseline performance metrics for regression detection",
+  "results": {
+    "small": {
+      "median_time_seconds": 0.15,
+      "lines_of_code": 85,
+      "vulnerabilities_detected": 0
+    },
+    "medium": {
+      "median_time_seconds": 0.45,
+      "lines_of_code": 650,
+      "vulnerabilities_detected": 1
+    },
+    "large": {
+      "median_time_seconds": 1.2,
+      "lines_of_code": 3200,
+      "vulnerabilities_detected": 1
+    },
+    "xlarge": {
+      "median_time_seconds": 4.5,
+      "lines_of_code": 12500,
+      "vulnerabilities_detected": 1
+    }
+  },
+  "note": "These are approximate baselines. Update when performance characteristics change significantly."
+}

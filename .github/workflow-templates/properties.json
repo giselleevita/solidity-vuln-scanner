@@ -1,0 +1,15 @@
+[
+  {
+    "name": "Solidity Scanner SARIF Gate",
+    "description": "Run Solidity vulnerability scans and upload SARIF to code scanning.",
+    "iconName": "code-scanning",
+    "categories": [
+      "Security",
+      "Code quality"
+    ],
+    "filePatterns": [
+      "^contracts/.*\\.sol$",
+      "^src/.*\\.sol$"
+    ]
+  }
+]

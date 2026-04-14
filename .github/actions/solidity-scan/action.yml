@@ -1,0 +1,119 @@
+name: "Solidity Vulnerability Scanner"
+description: "Scan Solidity smart contracts for security vulnerabilities in CI/CD"
+author: "giselleevita"
+
+inputs:
+  api-key:
+    description: "API key for the scanner service"
+    required: true
+  api-url:
+    description: "Scanner API base URL"
+    required: false
+    default: "https://api.solidity-scanner.example.com"
+  paths:
+    description: "Glob pattern for Solidity files to scan"
+    required: false
+    default: "contracts/**/*.sol"
+  severity-gate:
+    description: "Minimum severity to fail the build (critical, high, medium, low)"
+    required: false
+    default: "high"
+  report-format:
+    description: "Output format (sarif, json, markdown)"
+    required: false
+    default: "sarif"
+
+outputs:
+  findings-count:
+    description: "Total number of findings"
+    value: ${{ steps.scan.outputs.findings-count }}
+  critical-count:
+    description: "Number of CRITICAL findings"
+    value: ${{ steps.scan.outputs.critical-count }}
+  high-count:
+    description: "Number of HIGH findings"
+    value: ${{ steps.scan.outputs.high-count }}
+  sarif-file:
+    description: "Path to SARIF report file (if sarif format selected)"
+    value: "scan-results.sarif"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Find Solidity files
+      id: find-files
+      shell: bash
+      run: |
+        FILES=$(find . -path "${{ inputs.paths }}" -name "*.sol" 2>/dev/null | head -50)
+        if [ -z "$FILES" ]; then
+          echo "No Solidity files found matching pattern: ${{ inputs.paths }}"
+          exit 0
+        fi
+        echo "files<<EOF" >> $GITHUB_OUTPUT
+        echo "$FILES" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+        echo "Found $(echo "$FILES" | wc -l) Solidity files"
+
+    - name: Scan contracts
+      id: scan
+      shell: bash
+      env:
+        API_KEY: ${{ inputs.api-key }}
+        API_URL: ${{ inputs.api-url }}
+        REPORT_FORMAT: ${{ inputs.report-format }}
+        SEVERITY_GATE: ${{ inputs.severity-gate }}
+      run: |
+        TOTAL_FINDINGS=0
+        CRITICAL=0
+        HIGH=0
+        GATE_FAILED=0
+
+        while IFS= read -r sol_file; do
+          [ -z "$sol_file" ] && continue
+          echo "Scanning: $sol_file"
+
+          SOURCE=$(cat "$sol_file")
+          RESPONSE=$(curl -s -X POST "$API_URL/api/v1/scan" \
+            -H "Authorization: Bearer $API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n --arg src "$SOURCE" --arg fmt "$REPORT_FORMAT" '{source_code: $src, report_format: $fmt}')")
+
+          FILE_FINDINGS=$(echo "$RESPONSE" | jq '.findings | length // 0')
+          FILE_CRITICAL=$(echo "$RESPONSE" | jq '[.findings[] | select(.severity == "CRITICAL")] | length // 0')
+          FILE_HIGH=$(echo "$RESPONSE" | jq '[.findings[] | select(.severity == "HIGH")] | length // 0')
+
+          TOTAL_FINDINGS=$((TOTAL_FINDINGS + FILE_FINDINGS))
+          CRITICAL=$((CRITICAL + FILE_CRITICAL))
+          HIGH=$((HIGH + FILE_HIGH))
+
+          # Save SARIF if requested
+          if [ "$REPORT_FORMAT" = "sarif" ] && echo "$RESPONSE" | jq -e '.report' > /dev/null 2>&1; then
+            echo "$RESPONSE" | jq -r '.report' >> scan-results.sarif
+          fi
+
+        done <<< "${{ steps.find-files.outputs.files }}"
+
+        echo "findings-count=$TOTAL_FINDINGS" >> $GITHUB_OUTPUT
+        echo "critical-count=$CRITICAL" >> $GITHUB_OUTPUT
+        echo "high-count=$HIGH" >> $GITHUB_OUTPUT
+
+        # Gate check
+        case "$SEVERITY_GATE" in
+          critical) [ "$CRITICAL" -gt 0 ] && GATE_FAILED=1 ;;
+          high)     [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ] && GATE_FAILED=1 ;;
+          medium)   [ "$TOTAL_FINDINGS" -gt 0 ] && GATE_FAILED=1 ;;
+          *)        ;;
+        esac
+
+        echo "Total: $TOTAL_FINDINGS findings ($CRITICAL critical, $HIGH high)"
+        if [ "$GATE_FAILED" -eq 1 ]; then
+          echo "::error::Security gate FAILED: findings exceed $SEVERITY_GATE threshold"
+          exit 1
+        fi
+
+    - name: Upload SARIF
+      if: inputs.report-format == 'sarif' && always()
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: scan-results.sarif
+      continue-on-error: true

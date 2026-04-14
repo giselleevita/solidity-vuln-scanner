@@ -1,0 +1,20 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    curl \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Mythril
+RUN pip install --no-cache-dir mythril
+
+# Create non-root user
+RUN useradd -m -u 1000 mythril && chown -R mythril:mythril /app
+USER mythril
+
+ENTRYPOINT ["myth"]
+

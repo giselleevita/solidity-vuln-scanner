@@ -1,0 +1,38 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+      DEBUG: ${DEBUG:-False}
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+    expose:
+      - '8000'
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'python', '-c', "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+
+  dashboard:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    expose:
+      - '80'
+    restart: unless-stopped
+
+  gateway:
+    image: nginx:1.27-alpine
+    depends_on:
+      - api
+      - dashboard
+    ports:
+      - '8080:80'
+    volumes:
+      - ./static/nginx.prod.conf:/etc/nginx/conf.d/default.conf:ro
+    restart: unless-stopped

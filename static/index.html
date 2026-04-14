@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solidity Vulnerability Scanner - AI-Powered Smart Contract Security</title>
+    <meta name="description" content="Advanced Solidity smart contract vulnerability scanner with AI-powered analysis, static pattern detection, and cross-validation tools.">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #667eea;
+            --primary-dark: #764ba2;
+            --secondary: #f093fb;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --dark: #1f2937;
+            --light: #f9fafb;
+            --gray: #6b7280;
+            --border: #e5e7eb;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: var(--dark);
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        /* Header */
+        header {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            padding: 1rem 0;
+        }
+
+        nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: var(--primary);
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 2rem;
+            list-style: none;
+        }
+
+        .nav-links a {
+            color: var(--dark);
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.3s;
+        }
+
+        .nav-links a:hover {
+            color: var(--primary);
+        }
+
+        /* Hero Section */
+        .hero {
+            text-align: center;
+            padding: 4rem 0;
+            color: white;
+        }
+
+        .hero h1 {
+            font-size: 3.5rem;
+            margin-bottom: 1rem;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .hero p {
+            font-size: 1.25rem;
+            margin-bottom: 2rem;
+            opacity: 0.95;
+        }
+
+        .cta-buttons {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 0.75rem 2rem;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: transform 0.3s, box-shadow 0.3s;
+            display: inline-block;
+        }
+
+        .btn-primary {
+            background: white;
+            color: var(--primary);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: 2px solid white;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+
+        /* Main Content */
+        .main-content {
+            background: white;
+            border-radius: 20px 20px 0 0;
+            margin-top: -20px;
+            padding: 4rem 0;
+            min-height: calc(100vh - 400px);
+        }
+
+        .section {
+            margin-bottom: 4rem;
+        }
+
+        .section h2 {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+            color: var(--primary);
+        }
+
+        .section h3 {
+            font-size: 1.75rem;
+            margin: 2rem 0 1rem;
+            color: var(--dark);
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin-top: 2rem;
+        }
+
+        .feature-card {
+            background: var(--light);
+            padding: 2rem;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+        }
+
+        .feature-icon {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .feature-card h4 {
+            font-size: 1.25rem;
+            margin-bottom: 0.5rem;
+            color: var(--primary);
+        }
+
+        /* Code Block */
+        .code-block {
+            background: var(--dark);
+            color: #f8f8f2;
+            padding: 1.5rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 1rem 0;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 0.9rem;
+        }
+
+        .code-block code {
+            color: #f8f8f2;
+        }
+
+        /* Alert Boxes */
+        .alert {
+            padding: 1rem 1.5rem;
+            border-radius: 8px;
+            margin: 1rem 0;
+            border-left: 4px solid;
+        }
+
+        .alert-success {
+            background: #d1fae5;
+            border-color: var(--success);
+            color: #065f46;
+        }
+
+        .alert-warning {
+            background: #fef3c7;
+            border-color: var(--warning);
+            color: #92400e;
+        }
+
+        .alert-info {
+            background: #dbeafe;
+            border-color: #3b82f6;
+            color: #1e40af;
+        }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 2rem;
+            margin: 2rem 0;
+        }
+
+        .stat-card {
+            text-align: center;
+            padding: 2rem;
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: white;
+            border-radius: 12px;
+        }
+
+        .stat-number {
+            font-size: 3rem;
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-label {
+            font-size: 1rem;
+            opacity: 0.9;
+        }
+
+        /* Footer */
+        footer {
+            background: var(--dark);
+            color: white;
+            padding: 3rem 0;
+            text-align: center;
+        }
+
+        .footer-links {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            margin: 2rem 0;
+            flex-wrap: wrap;
+        }
+
+        .footer-links a {
+            color: white;
+            text-decoration: none;
+            opacity: 0.8;
+            transition: opacity 0.3s;
+        }
+
+        .footer-links a:hover {
+            opacity: 1;
+        }
+
+        /* Quick Start Steps */
+        .steps {
+            counter-reset: step-counter;
+        }
+
+        .step {
+            counter-increment: step-counter;
+            margin: 2rem 0;
+            padding-left: 3rem;
+            position: relative;
+        }
+
+        .step::before {
+            content: counter(step-counter);
+            position: absolute;
+            left: 0;
+            top: 0;
+            background: var(--primary);
+            color: white;
+            width: 2rem;
+            height: 2rem;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .hero h1 {
+                font-size: 2.5rem;
+            }
+
+            .nav-links {
+                flex-direction: column;
+                gap: 1rem;
+            }
+
+            .features-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Badge */
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.875rem;
+            font-weight: 600;
+            margin: 0.25rem;
+        }
+
+        .badge-success {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .badge-warning {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .badge-danger {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header>
+        <nav class="container">
+            <a href="/" class="logo">
+                🔐 Solidity Vuln Scanner
+            </a>
+            <ul class="nav-links">
+                <li><a href="#features">Features</a></li>
+                <li><a href="#quickstart">Quick Start</a></li>
+                <li><a href="#api">API</a></li>
+                <li><a href="#security">Security</a></li>
+                <li><a href="/docs" target="_blank">API Docs</a></li>
+                <li><a href="http://localhost:8501" target="_blank">Web UI</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="container">
+            <h1>🔒 Solidity Vulnerability Scanner</h1>
+            <p>Professional Security Audits for Ethereum Smart Contracts</p>
+            <p style="font-size: 1rem; opacity: 0.9;">SWC-Compliant • Professional-Grade • Production-Ready</p>
+            <div class="cta-buttons">
+                <a href="http://localhost:8501" class="btn btn-primary" target="_blank">🚀 Launch Web UI</a>
+                <a href="/docs" class="btn btn-secondary" target="_blank">📚 View API Docs</a>
+                <a href="#quickstart" class="btn btn-secondary">⚡ Quick Start</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <div class="container">
+            <!-- Introduction -->
+            <section class="section">
+                <h2>What is This Tool?</h2>
+                <p style="font-size: 1.125rem; margin-bottom: 1rem;">
+                    The <strong>Solidity Vulnerability Scanner</strong> is a <strong>professional-grade security audit tool</strong> designed for comprehensive security analysis of Ethereum smart contracts. 
+                    It provides industry-standard compliance checking (SWC, CWE, OWASP) and detailed remediation guidance suitable for professional security audits.
+                </p>
+                <div class="alert alert-success" style="margin: 1rem 0;">
+                    <strong>✅ Professional Audit Ready:</strong> This tool is suitable for preliminary security assessments and can complement professional security audits with automated SWC compliance checking, detailed vulnerability reports, and comprehensive remediation guidance.
+                </div>
+                <ul style="list-style: none; padding-left: 0;">
+                    <li>✅ <strong>Static Pattern Analysis</strong> - Detects 15+ common vulnerability types using regex patterns</li>
+                    <li>✅ <strong>AI-Powered Auditing</strong> - Leverages GPT-4 or Claude for semantic understanding and logic-level detection</li>
+                    <li>✅ <strong>Cross-Validation</strong> - Integrates with Slither and Mythril for comprehensive analysis</li>
+                    <li>✅ <strong>Risk Scoring</strong> - Calculates vulnerability severity and overall risk scores</li>
+                    <li>✅ <strong>Professional Reports</strong> - Generates JSON, HTML, Markdown, SARIF, and PDF reports</li>
+                </ul>
+            </section>
+
+            <!-- Stats -->
+            <section class="section">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-number">15+</div>
+                        <div class="stat-label">Vulnerability Types</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">~1-2s</div>
+                        <div class="stat-label">Analysis Time</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">~15%</div>
+                        <div class="stat-label">False Positive Rate</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">100%</div>
+                        <div class="stat-label">Security Hardened</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Features -->
+            <section class="section" id="features">
+                <h2>Key Features</h2>
+                <div class="features-grid">
+                    <div class="feature-card">
+                        <div class="feature-icon">🔍</div>
+                        <h4>Static Pattern Detection</h4>
+                        <p>Detects vulnerabilities like reentrancy, unchecked calls, overflow/underflow, access control issues, and more using optimized regex patterns with context awareness.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🤖</div>
+                        <h4>AI-Powered Analysis</h4>
+                        <p>Uses OpenAI GPT-4 or Anthropic Claude to understand contract logic, detect complex vulnerabilities, and provide intelligent remediation suggestions.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🔄</div>
+                        <h4>Cross-Validation</h4>
+                        <p>Integrates with industry-standard tools (Slither, Mythril) to validate findings and ensure comprehensive coverage.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">📊</div>
+                        <h4>Risk Scoring</h4>
+                        <p>Calculates vulnerability severity (Critical, High, Medium, Low, Info) and overall contract risk score (0-100).</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">📝</div>
+                        <h4>Multiple Report Formats</h4>
+                        <p>Generate reports in JSON, HTML, Markdown, SARIF (for CI/CD), and professional PDF formats.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🌐</div>
+                        <h4>REST API & Web UI</h4>
+                        <p>Use the FastAPI REST API for integration or the Streamlit web interface for easy analysis. Both support batch processing.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🔒</div>
+                        <h4>Security Hardened</h4>
+                        <p>Production-ready with authentication, rate limiting, input validation, secure file handling, and comprehensive security fixes.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">📋</div>
+                        <h4>SWC Compliance</h4>
+                        <p>Maps all vulnerabilities to SWC (Smart Contract Weakness Classification) registry for professional audit compliance. Includes CWE and OWASP classifications.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">📊</div>
+                        <h4>Professional Reports</h4>
+                        <p>Generate comprehensive audit reports in PDF, HTML, or JSON format with code metrics, compliance status, and detailed remediation examples.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🎯</div>
+                        <h4>Risk Assessment</h4>
+                        <p>Advanced risk scoring with confidence levels, code complexity analysis, and prioritized recommendations for professional audit workflows.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">⚡</div>
+                        <h4>High Performance</h4>
+                        <p>Optimized pattern matching, caching, async processing, and support for contracts up to 10,000 lines of code.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🐳</div>
+                        <h4>Docker Support</h4>
+                        <p>Run everything in containers with Docker Compose. Supports Docker-based tool execution for Slither and Mythril.</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Quick Start -->
+            <section class="section" id="quickstart">
+                <h2>Quick Start Guide</h2>
+                
+                <div class="steps">
+                    <div class="step">
+                        <h3>1. Install Dependencies</h3>
+                        <p>Install Python dependencies (Python 3.10+ required):</p>
+                        <div class="code-block">
+                            <code>pip install -r requirements.txt</code>
+                        </div>
+                        <p style="margin-top: 0.5rem;">Or use the virtual environment:</p>
+                        <div class="code-block">
+                            <code>python3 -m venv venv<br>
+source venv/bin/activate  # On Windows: venv\Scripts\activate<br>
+pip install -r requirements.txt</code>
+                        </div>
+                    </div>
+
+                    <div class="step">
+                        <h3>2. Start the Services</h3>
+                        <p>Run the API server and Web UI:</p>
+                        <div class="code-block">
+                            <code># Terminal 1: Start API<br>
+python fastapi_api.py<br><br>
+# Terminal 2: Start Web UI<br>
+streamlit run streamlit_ui.py</code>
+                        </div>
+                        <p style="margin-top: 1rem;">Or use Docker Compose:</p>
+                        <div class="code-block">
+                            <code>docker-compose up</code>
+                        </div>
+                    </div>
+
+                    <div class="step">
+                        <h3>3. Analyze a Contract</h3>
+                        <p><strong>Option A: Using Web UI</strong></p>
+                        <p>Open <a href="http://localhost:8501" target="_blank">http://localhost:8501</a> in your browser and paste your Solidity contract code.</p>
+                        
+                        <p style="margin-top: 1rem;"><strong>Option B: Using API</strong></p>
+                        <div class="code-block">
+                            <code>curl -X POST "http://localhost:8001/analyze" \<br>
+&nbsp;&nbsp;-H "Content-Type: application/json" \<br>
+&nbsp;&nbsp;-d '{<br>
+&nbsp;&nbsp;&nbsp;&nbsp;"contract_code": "pragma solidity ^0.8.0; contract Test {}",<br>
+&nbsp;&nbsp;&nbsp;&nbsp;"contract_name": "Test",<br>
+&nbsp;&nbsp;&nbsp;&nbsp;"use_llm_audit": false<br>
+&nbsp;&nbsp;}'</code>
+                        </div>
+
+                        <p style="margin-top: 1rem;"><strong>Option C: Using CLI</strong></p>
+                        <div class="code-block">
+                            <code>python cli.py contract.sol --llm --format markdown</code>
+                        </div>
+                    </div>
+
+                    <div class="step">
+                        <h3>4. (Optional) Enable AI Features</h3>
+                        <p>For AI-powered analysis, add your API key to <code>.env</code>:</p>
+                        <div class="code-block">
+                            <code>USE_LLM=true<br>
+LLM_PROVIDER=openai  # or "anthropic"<br>
+LLM_API_KEY=sk-your-key-here<br>
+LLM_MODEL=gpt-4o-mini</code>
+                        </div>
+                        <div class="alert alert-info" style="margin-top: 1rem;">
+                            <strong>Note:</strong> The tool works perfectly in "free mode" without an API key - you'll get static pattern analysis only.
+                        </div>
+                    </div>
+
+                    <div class="step">
+                        <h3>5. Run Professional Audit</h3>
+                        <p><strong>Option A: Using API</strong></p>
+                        <div class="code-block">
+                            <code>curl -X POST "http://localhost:8001/professional-audit" \<br>
+&nbsp;&nbsp;-H "Content-Type: application/json" \<br>
+&nbsp;&nbsp;-d '{<br>
+&nbsp;&nbsp;&nbsp;&nbsp;"contract_code": "pragma solidity ^0.8.0; contract Test {}",<br>
+&nbsp;&nbsp;&nbsp;&nbsp;"contract_name": "Test",<br>
+&nbsp;&nbsp;&nbsp;&nbsp;"report_format": "json"  # or "html", "pdf"<br>
+&nbsp;&nbsp;}'</code>
+                        </div>
+                        <p style="margin-top: 1rem;"><strong>Option B: Using Web UI</strong></p>
+                        <p>Use the "Professional Audit" tab in the web interface for comprehensive reports.</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Example -->
+            <section class="section">
+                <h2>Example: Analyzing a Vulnerable Contract</h2>
+                <p>Try analyzing this contract with a reentrancy vulnerability:</p>
+                <div class="code-block">
+                    <code>pragma solidity ^0.8.0;<br><br>
+contract VulnerableVault {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;mapping(address => uint256) balances;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;function withdraw(uint256 amount) public {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;require(balances[msg.sender] >= amount);<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(bool success, ) = msg.sender.call{value: amount}("");<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;require(success);<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;balances[msg.sender] -= amount;  // State update after external call!<br>
+&nbsp;&nbsp;&nbsp;&nbsp;}<br>
+}</code>
+                </div>
+                <p style="margin-top: 1rem;">The scanner will detect:</p>
+                <ul style="margin-left: 2rem; margin-top: 0.5rem;">
+                    <li><span class="badge badge-danger">CRITICAL</span> Reentrancy vulnerability</li>
+                    <li>External call before state update</li>
+                    <li>Recommended fix: Use Checks-Effects-Interactions pattern</li>
+                </ul>
+            </section>
+
+            <!-- API Documentation -->
+            <section class="section" id="api">
+                <h2>API Documentation</h2>
+                <p>The scanner provides a comprehensive REST API for integration into CI/CD pipelines and automated workflows.</p>
+                
+                <h3>Main Endpoints</h3>
+                <table style="width: 100%; border-collapse: collapse; margin: 1rem 0;">
+                    <thead>
+                        <tr style="background: var(--light);">
+                            <th style="padding: 0.75rem; text-align: left; border: 1px solid var(--border);">Endpoint</th>
+                            <th style="padding: 0.75rem; text-align: left; border: 1px solid var(--border);">Method</th>
+                            <th style="padding: 0.75rem; text-align: left; border: 1px solid var(--border);">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td style="padding: 0.75rem; border: 1px solid var(--border);"><code>/analyze</code></td>
+                            <td style="padding: 0.75rem; border: 1px solid var(--border);">POST</td>
+                            <td style="padding: 0.75rem; border: 1px solid var(--border);">Analyze a single contract</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 0.75rem; border: 1px solid var(--border);"><code>/analyze-sarif</code></td>
+                            <td style="padding: 0.75rem; border: 1px solid var(--border);">POST</td>
+                            <td style="padding: 0.75rem; border: 1px solid var(--border);">Get SARIF format output (for CI/CD)</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 0.75rem; border: 1px solid var(--border);"><code>/analyze-pdf</code></td>
+                            <td style="padding: 0.75rem; border: 1px solid var(--border);">POST</td>
+                            <td style="padding: 0.75rem; border: 1px solid var(--border);">Generate PDF report</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 0.75rem; border: 1px solid var(--border);"><code>/professional-audit</code></td>
+                            <td style="padding: 0.75rem; border: 1px solid var(--border);">POST</td>
+                            <td style="padding: 0.75rem; border: 1px solid var(--border);">Professional audit with SWC compliance</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 0.75rem; border: 1px solid var(--border);"><code>/swc-registry</code></td>
+                            <td style="padding: 0.75rem; border: 1px solid var(--border);">GET</td>
+                            <td style="padding: 0.75rem; border: 1px solid var(--border);">Get SWC registry information</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 0.75rem; border: 1px solid var(--border);"><code>/cross-validate</code></td>
+                            <td style="padding: 0.75rem; border: 1px solid var(--border);">POST</td>
+                            <td style="padding: 0.75rem; border: 1px solid var(--border);">Run with Slither/Mythril validation</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 0.75rem; border: 1px solid var(--border);"><code>/health</code></td>
+                            <td style="padding: 0.75rem; border: 1px solid var(--border);">GET</td>
+                            <td style="padding: 0.75rem; border: 1px solid var(--border);">Health check</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 0.75rem; border: 1px solid var(--border);"><code>/docs</code></td>
+                            <td style="padding: 0.75rem; border: 1px solid var(--border);">GET</td>
+                            <td style="padding: 0.75rem; border: 1px solid var(--border);">Interactive API documentation</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <div class="alert alert-info" style="margin-top: 1rem;">
+                    <strong>📚 Full API Documentation:</strong> Visit <a href="/docs" target="_blank" style="color: #1e40af;">http://localhost:8001/docs</a> for interactive Swagger documentation with request/response examples.
+                </div>
+            </section>
+
+            <!-- Security -->
+            <!-- Professional Audit -->
+            <section class="section">
+                <h2>Professional Audit Capabilities</h2>
+                
+                <div class="alert alert-success">
+                    <strong>✅ Professional Audit Ready:</strong> This tool provides comprehensive analysis suitable for professional security audits, including SWC compliance checking, detailed vulnerability classification, and industry-standard reporting.
+                </div>
+
+                <h3>SWC Compliance</h3>
+                <p>All vulnerabilities are mapped to the <strong>SWC (Smart Contract Weakness Classification) Registry</strong>, enabling:</p>
+                <ul style="margin-left: 2rem;">
+                    <li>✅ Standardized vulnerability classification</li>
+                    <li>✅ CWE (Common Weakness Enumeration) mapping</li>
+                    <li>✅ OWASP Top 10 alignment</li>
+                    <li>✅ DASP TOP 10 classification</li>
+                    <li>✅ Compliance reporting for audit requirements</li>
+                </ul>
+
+                <h3>Professional Report Features</h3>
+                <ul style="margin-left: 2rem;">
+                    <li>✅ Comprehensive vulnerability details with SWC IDs</li>
+                    <li>✅ Code metrics (cyclomatic complexity, function counts)</li>
+                    <li>✅ Risk assessment with confidence levels</li>
+                    <li>✅ Detailed remediation guidance with code examples</li>
+                    <li>✅ Compliance status reporting</li>
+                    <li>✅ Professional PDF/HTML report generation</li>
+                </ul>
+
+                <h3>When to Use Professional Audits</h3>
+                <p><strong>This tool is suitable for:</strong></p>
+                <ul style="margin-left: 2rem;">
+                    <li>✅ Preliminary security assessments</li>
+                    <li>✅ SWC compliance checking</li>
+                    <li>✅ Automated vulnerability scanning in CI/CD</li>
+                    <li>✅ Educational and training purposes</li>
+                    <li>✅ Supporting manual security reviews</li>
+                </ul>
+
+                <p style="margin-top: 1rem;"><strong>Always supplement with:</strong></p>
+                <ul style="margin-left: 2rem;">
+                    <li>🔍 Manual code review by security experts</li>
+                    <li>🧪 Comprehensive testing (unit, integration, fuzzing)</li>
+                    <li>🔬 Formal verification (for critical contracts)</li>
+                    <li>👥 Professional security audit firms</li>
+                </ul>
+            </section>
+
+            <section class="section" id="security">
+                <h2>Security & Best Practices</h2>
+                
+                <h3>🔒 Security Features</h3>
+                <p>The scanner has been hardened for production use with:</p>
+                <ul style="margin-left: 2rem; margin-top: 0.5rem;">
+                    <li>✅ Secure CORS configuration (no wildcard in production)</li>
+                    <li>✅ Input validation and sanitization (prevents injection attacks)</li>
+                    <li>✅ Command injection prevention</li>
+                    <li>✅ Secure file handling and cleanup</li>
+                    <li>✅ Rate limiting and caching</li>
+                    <li>✅ JWT authentication support</li>
+                    <li>✅ Production mode validation</li>
+                    <li>✅ ReDoS attack prevention</li>
+                </ul>
+
+                <h3 style="margin-top: 2rem;">⚠️ Important Limitations</h3>
+                <div class="alert alert-warning">
+                    <strong>This tool is for preliminary security assessment and education.</strong> It is <strong>NOT a substitute</strong> for professional security audits before deploying contracts to mainnet.
+                </div>
+
+                <p><strong>What the scanner CAN detect:</strong></p>
+                <ul style="margin-left: 2rem;">
+                    <li>Common vulnerability patterns (reentrancy, access control, etc.)</li>
+                    <li>Syntax-level issues</li>
+                    <li>Well-known security anti-patterns</li>
+                </ul>
+
+                <p style="margin-top: 1rem;"><strong>What the scanner CANNOT detect:</strong></p>
+                <ul style="margin-left: 2rem;">
+                    <li>Complex logic-level vulnerabilities requiring domain knowledge</li>
+                    <li>Business logic flaws</li>
+                    <li>Vulnerabilities in external contract dependencies</li>
+                    <li>Protocol-level attacks (flash loans, MEV, etc.)</li>
+                </ul>
+
+                <div class="alert alert-success" style="margin-top: 1rem;">
+                    <strong>✅ Best Practice:</strong> Always use multiple tools, conduct manual code review, and get professional audits for production contracts handling significant value.
+                </div>
+            </section>
+
+            <!-- Detected Vulnerabilities -->
+            <section class="section">
+                <h2>Detected Vulnerability Types</h2>
+                <p>The scanner detects 15+ vulnerability types:</p>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; margin-top: 1rem;">
+                    <div><span class="badge badge-danger">CRITICAL</span> Reentrancy</div>
+                    <div><span class="badge badge-warning">HIGH</span> Unchecked Call</div>
+                    <div><span class="badge badge-warning">HIGH</span> Overflow/Underflow</div>
+                    <div><span class="badge badge-warning">HIGH</span> Access Control</div>
+                    <div><span class="badge badge-warning">HIGH</span> tx.origin Misuse</div>
+                    <div><span class="badge badge-warning">HIGH</span> Delegatecall Risk</div>
+                    <div><span class="badge badge-warning">HIGH</span> Missing Input Validation</div>
+                    <div><span class="badge badge-warning">MEDIUM</span> Bad Randomness</div>
+                    <div><span class="badge badge-warning">MEDIUM</span> Gas DoS</div>
+                    <div><span class="badge badge-warning">MEDIUM</span> Selfdestruct</div>
+                    <div><span class="badge badge-warning">MEDIUM</span> Front-Running</div>
+                    <div><span class="badge badge-warning">MEDIUM</span> Logic Error</div>
+                    <div><span class="badge badge-warning">MEDIUM</span> Centralization Risk</div>
+                    <div><span class="badge badge-success">LOW</span> Timestamp Dependency</div>
+                    <div><span class="badge badge-success">LOW</span> Missing Events</div>
+                </div>
+            </section>
+
+            <!-- Resources -->
+            <section class="section">
+                <h2>Additional Resources</h2>
+                <ul style="list-style: none; padding-left: 0;">
+                    <li>📖 <a href="HOW_TO_USE.md" target="_blank">Complete Usage Guide</a></li>
+                    <li>🔧 <a href="docs/INSTALL.md" target="_blank">Installation Instructions</a></li>
+                    <li>🐳 <a href="docs/DOCKER.md" target="_blank">Docker Setup Guide</a></li>
+                    <li>🏗️ <a href="docs/ARCHITECTURE.md" target="_blank">Architecture Documentation</a></li>
+                    <li>🔒 <a href="SECURITY.md" target="_blank">Security & Limitations</a></li>
+                    <li>🔍 <a href="TOOL_CRITIQUE.md" target="_blank">Security Audit Report</a></li>
+                </ul>
+            </section>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer>
+        <div class="container">
+            <p style="font-size: 1.25rem; margin-bottom: 1rem;">🔐 Solidity Vulnerability Scanner</p>
+            <p style="opacity: 0.8; margin-bottom: 2rem;">AI-Powered Security Analysis for Ethereum Smart Contracts</p>
+            <div class="footer-links">
+                <a href="http://localhost:8501" target="_blank">Web UI</a>
+                <a href="/docs" target="_blank">API Docs</a>
+                <a href="https://github.com" target="_blank">GitHub</a>
+                <a href="SECURITY.md" target="_blank">Security</a>
+                <a href="LICENSE" target="_blank">License</a>
+            </div>
+            <p style="margin-top: 2rem; opacity: 0.6; font-size: 0.875rem;">
+                © 2026 Solidity Vulnerability Scanner. MIT License.
+            </p>
+        </div>
+    </footer>
+</body>
+</html>
