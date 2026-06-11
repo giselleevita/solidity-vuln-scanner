@@ -1,6 +1,6 @@
 # Reliability & Production Readiness
 
-## ✅ Current Status: Production Ready
+## ✅ Current Status: Reference Implementation
 
 This scanner has been tested and is suitable for real-world use with the following considerations:
 

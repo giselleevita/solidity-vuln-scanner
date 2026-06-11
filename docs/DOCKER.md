@@ -93,7 +93,7 @@ docker compose -f docker-compose.prod.yml down
 ✅ **No Local Installation** - Slither/Mythril run in containers  
 ✅ **Consistent Environment** - Same setup everywhere  
 ✅ **Isolated Dependencies** - No conflicts with system packages  
-✅ **Production Ready** - Easy to deploy  
+✅ **Reference Implementation** - Easy to deploy
 
 ### When to Use Docker
 

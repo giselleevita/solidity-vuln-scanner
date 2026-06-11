@@ -1,6 +1,6 @@
 # Solidity Vuln Scanner
 
-**Professional-grade security audit toolkit for Ethereum smart contracts.**  
+**Reference security analysis toolkit for Ethereum smart contracts.**
 Combines deterministic static analysis, optional LLM auditing, and external tool cross‑validation to produce **SWC‑mapped findings**, compliance context (CWE/OWASP/DASP), and **professional audit reports** (JSON/HTML/PDF).
 
 **What it’s for:**  

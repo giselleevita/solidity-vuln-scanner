@@ -57,7 +57,7 @@ jobs:
           fi
 
       - name: Upload coverage artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: always()
         with:
           name: coverage-${{ github.sha }}
@@ -240,7 +240,7 @@ jobs:
         continue-on-error: true
 
       - name: Upload benchmark results as artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: always() && (github.event_name != 'pull_request' || github.ref == 'refs/heads/main')
         with:
           name: benchmarks-${{ github.sha }}
@@ -278,4 +278,3 @@ jobs:
             echo "No benchmark results file found."
           fi
         continue-on-error: true
-

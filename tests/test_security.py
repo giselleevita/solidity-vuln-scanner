@@ -3,6 +3,7 @@ Security tests for Solidity Vuln Scanner
 Tests authentication, input validation, injection prevention, etc.
 """
 
+import os
 import pytest
 import re
 from fastapi.testclient import TestClient
@@ -172,7 +173,10 @@ class TestRegexSecurity:
         assert result is not None
 
 
-@pytest.mark.skipif(not pytest.config.getoption("--run-slow"), reason="Requires external tools")
+@pytest.mark.skipif(
+    os.getenv("RUN_SLOW_TESTS") != "1",
+    reason="Requires external tools; set RUN_SLOW_TESTS=1 to enable",
+)
 class TestToolSecurity:
     """Test security of external tool integration"""
     
