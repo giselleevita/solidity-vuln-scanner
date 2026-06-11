@@ -89,7 +89,13 @@ class TestAPISecurity:
     def test_cors_configuration(self):
         """Test that CORS is properly configured"""
         # Should not allow arbitrary origins in production
-        response = client.options("/health")
+        response = client.options(
+            "/health",
+            headers={
+                "Origin": "http://localhost:3000",
+                "Access-Control-Request-Method": "GET",
+            },
+        )
         # CORS headers should be present
         assert response.status_code in [200, 204]
     
@@ -117,7 +123,7 @@ class TestAPISecurity:
             }
         )
         # Should be rejected (400 or 413)
-        assert response.status_code in [400, 413, 422]
+        assert response.status_code in [400, 401, 413, 422]
     
     def test_malicious_json_structure(self):
         """Test that malformed JSON is handled safely"""

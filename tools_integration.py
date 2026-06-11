@@ -16,10 +16,10 @@ from typing import Tuple
 
 # Check if Docker is available
 def _docker_available() -> bool:
-    """Check if Docker is available"""
+    """Check that the Docker client can reach a running daemon."""
     try:
         result = subprocess.run(
-            ["docker", "--version"],
+            ["docker", "info"],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             timeout=2
@@ -150,7 +150,8 @@ def run_slither(contract_code: str, filename: str = "Contract.sol", timeout: int
                 # Try without JSON if that fails
                 result = _run_cmd(["slither", str(path)], timeout=timeout)
             
-            return result
+            success, output = result
+            return success, f"Slither: {output}"
         except Exception as e:
             return False, f"Error running Slither: {str(e)}"
 
@@ -194,7 +195,8 @@ def _run_slither_docker(contract_code: str, filename: str, timeout: int) -> Tupl
                 cmd[-2:] = [container_path]
                 result = _run_cmd(cmd, timeout=timeout)
             
-            return result
+            success, output = result
+            return success, f"Slither Docker error: {output}" if not success else f"Slither: {output}"
             # Temporary directory auto-cleans up here
     except Exception as e:
         return False, f"Docker error: {str(e)}. Try local installation: pip install slither-analyzer"
@@ -244,7 +246,8 @@ def run_mythril(contract_code: str, filename: str = "Contract.sol", timeout: int
                 timeout=timeout
             )
             
-            return result
+            success, output = result
+            return success, f"Mythril: {output}"
         except Exception as e:
             return False, f"Error running Mythril: {str(e)}"
 
@@ -285,4 +288,3 @@ def _run_mythril_docker(contract_code: str, filename: str, timeout: int) -> Tupl
             # Temporary directory auto-cleans up here
     except Exception as e:
         return False, f"Docker error: {str(e)}. Try local installation: pip install mythril"
-

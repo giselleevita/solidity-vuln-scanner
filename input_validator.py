@@ -6,7 +6,7 @@ import ipaddress
 import re
 import socket
 import unicodedata
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 from pathlib import Path
 from typing import Tuple, Optional
 from app_config import get_config
@@ -99,14 +99,15 @@ def sanitize_filename(filename: str) -> str:
     Returns:
         Sanitized filename safe for use in file operations
     """
-    # Get just the basename (no directory traversal)
-    safe_name = Path(filename).name
+    # Decode encoded traversal attempts before stripping directories.
+    safe_name = Path(unquote(filename).replace("\\", "/")).name
     
     # Remove any remaining path separators
     safe_name = safe_name.replace('/', '').replace('\\', '')
     
-    # Remove control characters and dangerous characters
-    safe_name = ''.join(c for c in safe_name if c.isprintable() and c not in '<>:"|?*')
+    # Keep only a conservative filename character set. This also removes
+    # traversal markers and shell metacharacters.
+    safe_name = re.sub(r"[^A-Za-z0-9_.-]", "", safe_name).replace("..", "")
     
     # Limit length
     if len(safe_name) > 255:

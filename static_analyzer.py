@@ -138,7 +138,7 @@ class StaticAnalyzer:
         """Initialize vulnerability detection patterns with improved accuracy"""
         return {
             "reentrancy": {
-                "pattern": r"(?:\.call|\.send|\.transfer)\s*\([^)]*\)[^;]*?[;\n][^;]*?(?:balances|amount|_balance)\s*[-=]",
+                "pattern": r"(?:\.call\s*(?:\{[^}]*\})?|\.send|\.transfer)\s*\([^)]*\)[\s\S]{0,500}?(?:balances|_balance)[^;\n]{0,120}(?:-=|=)",
                 "severity": "CRITICAL",
                 "description": "Potential reentrancy vulnerability: external call before state update",
                 "remediation": "Use Checks-Effects-Interactions pattern. Update state BEFORE external calls.",
@@ -159,7 +159,7 @@ class StaticAnalyzer:
                 "confidence_base": 0.6
             },
             "access_control": {
-                "pattern": r"(?:public|external)\s+function\s+(?:transfer|mint|burn|withdraw|execute|setAdmin|setOwner)\s*\([^)]*\)\s*(?!.*onlyOwner)(?!.*onlyAdmin)(?!.*modifier\s)",
+                "pattern": r"function\s+(?:mint|burn|withdraw|execute|setAdmin|setOwner)\s*\([^)]*\)[^{;]*(?:public|external)(?![^{;]*(?:onlyOwner|onlyAdmin|onlyRole))",
                 "severity": "HIGH",
                 "description": "Sensitive function without access control modifiers",
                 "remediation": "Add onlyOwner, onlyAdmin, or other access control checks.",
@@ -243,14 +243,14 @@ class StaticAnalyzer:
                 "confidence_base": 0.8
             },
             "uninitialized_storage": {
-                "pattern": r"mapping|struct\s+\w+\s+[a-zA-Z_][a-zA-Z0-9_]*\s*;(?!.*=)",
+                "pattern": r"\bstorage\s+[a-zA-Z_][a-zA-Z0-9_]*\s*;(?!.*=)",
                 "severity": "MEDIUM",
                 "description": "Uninitialized storage pointer",
                 "remediation": "Initialize storage variables before use.",
                 "confidence_base": 0.5
             },
             "locked_ether": {
-                "pattern": r"contract\s+\w+\s*\{[^}]*\}(?!.*payable)(?!.*receive)(?!.*fallback)",
+                "pattern": r"contract\s+\w+[\s\S]*?(?:receive\s*\(\)|fallback\s*\(\)|\bpayable\b)[\s\S]*?(?!function\s+withdraw)",
                 "severity": "LOW",
                 "description": "Contract can receive ether but has no way to withdraw",
                 "remediation": "Add withdraw function or make contract payable with proper withdrawal mechanism.",
@@ -502,7 +502,7 @@ class StaticAnalyzer:
         
         # Severity weights
         severity_weights = {
-            "CRITICAL": 25,
+            "CRITICAL": 50,
             "HIGH": 15,
             "MEDIUM": 8,
             "LOW": 3,
