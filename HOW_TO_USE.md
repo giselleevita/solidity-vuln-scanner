@@ -284,7 +284,7 @@ curl -X POST "http://localhost:8000/analyze" \
       -d @contract.json > results.sarif
     
 - name: Upload SARIF
-  uses: github/codeql-action/upload-sarif@v3
+  uses: github/codeql-action/upload-sarif@v4
   with:
     sarif_file: results.sarif
 ```

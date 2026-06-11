@@ -33,7 +33,7 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/solidity-scan
         with:
           api-key: ${{ secrets.SOLIDITY_SCANNER_API_KEY }}

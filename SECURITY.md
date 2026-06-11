@@ -173,7 +173,7 @@ Pay special attention to:
       -d @contract.json > results.sarif
     
     # Upload SARIF for code scanning
-    - uses: github/codeql-action/upload-sarif@v3
+    - uses: github/codeql-action/upload-sarif@v4
       with:
         sarif_file: results.sarif
 ```
