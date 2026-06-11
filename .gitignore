@@ -21,7 +21,7 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+/lib/
 lib64/
 parts/
 sdist/
@@ -81,4 +81,3 @@ benchmarks/results.json
 
 # Node modules (if using web3.py or similar)
 node_modules/
-
