@@ -50,7 +50,7 @@ reportlab==4.0.7
 httpx==0.25.2
 
 # Authentication
-python-jose[cryptography]==3.3.0
+python-jose[cryptography]==3.4.0
 passlib[bcrypt]==1.7.4
 
 # Queue system (optional)
