@@ -1,5 +1,5 @@
 # Core dependencies
-python-dotenv==1.0.0
+python-dotenv==1.2.2
 
 # Web frameworks
 fastapi==0.104.1
