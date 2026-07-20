@@ -209,24 +209,24 @@ class StaticAnalyzer:
             },
             "no_events": {
                 "pattern": r"(?:function\s+(?:transfer|mint|burn|withdraw))\s*\([^)]*\)[^{]*\{[^}]*\}(?!.*emit)",
-                "severity": "LOW",
+                "severity": "INFO",
                 "description": "Critical state change without event emission",
                 "remediation": "Emit events for all state changes to enable off-chain monitoring.",
-                "confidence_base": 0.5
+                "confidence_base": 0.1
             },
             "missing_input_validation": {
                 "pattern": r"function\s+\w+\s*\([^)]+\).*?(?:public|external)[^{]*\{[^}]*\}(?!.*require)(?!.*assert)(?!.*modifier\s)",
-                "severity": "HIGH",
+                "severity": "LOW",
                 "description": "Function without input validation checks",
                 "remediation": "Add require() statements to validate function inputs.",
-                "confidence_base": 0.3  # Lower confidence - many functions have validation in body
+                "confidence_base": 0.1  # Lower confidence - many functions have validation in body
             },
             "front_running": {
                 "pattern": r"(?:require|if)\s*\(\s*.*?\s*(?:<|>|==|!=)\s*.*?\s*\)\s*.*?\.call|\.transfer|\.send",
-                "severity": "MEDIUM",
+                "severity": "LOW",
                 "description": "Transaction order dependence (front-running vulnerability)",
                 "remediation": "Use commit-reveal schemes or on-chain randomness to prevent front-running.",
-                "confidence_base": 0.6
+                "confidence_base": 0.2
             },
             "logic_error": {
                 "pattern": r"(?:require|assert)\s*\(\s*(?:false|true|0|1)\s*\)",
@@ -254,7 +254,7 @@ class StaticAnalyzer:
                 "severity": "LOW",
                 "description": "Contract can receive ether but has no way to withdraw",
                 "remediation": "Add withdraw function or make contract payable with proper withdrawal mechanism.",
-                "confidence_base": 0.4
+                "confidence_base": 0.05
             }
         }
     
@@ -289,6 +289,11 @@ class StaticAnalyzer:
             
             # Check each pattern with timeout protection
             all_vulnerabilities = []
+
+            # Heuristic detections improve reliability for key security classes.
+            all_vulnerabilities.extend(self._detect_reentrancy_heuristic(lines))
+            all_vulnerabilities.extend(self._detect_access_control_heuristic(lines))
+
             for vuln_key, vuln_config in self.pattern_configs.items():
                 try:
                     matches = self._find_pattern_matches(
@@ -491,6 +496,64 @@ class StaticAnalyzer:
                 logger.debug(f"Deduplicated vulnerability: {vuln.vuln_type} at line {vuln.line_number}")
         
         return unique_vulns
+
+    def _detect_reentrancy_heuristic(self, lines: List[str]) -> List[Vulnerability]:
+        vulnerabilities: List[Vulnerability] = []
+        external_call_re = re.compile(r"\.call\s*\{[^}]*\}\s*\(|\.call\s*\(|\.send\s*\(|\.transfer\s*\(")
+        state_update_re = re.compile(r"(?:balances?|_?balance)\s*\[[^\]]+\]\s*[-+*/]?=|(?:balances?|_?balance)\s*[-+*/]?=")
+
+        for idx, line in enumerate(lines, start=1):
+            if not external_call_re.search(line):
+                continue
+            lookahead = lines[idx : min(idx + 12, len(lines))]
+            if any(state_update_re.search(candidate) for candidate in lookahead):
+                snippet = self._get_code_snippet(lines, idx, config.code_snippet_context_lines)
+                vulnerabilities.append(
+                    Vulnerability(
+                        vuln_type="reentrancy",
+                        severity="CRITICAL",
+                        line_number=idx,
+                        description="Potential reentrancy vulnerability: external call before state update",
+                        code_snippet=snippet,
+                        remediation="Use Checks-Effects-Interactions pattern. Update state BEFORE external calls.",
+                        confidence=0.92,
+                        unique_id=f"reentrancy:{idx}:heuristic",
+                    )
+                )
+        return vulnerabilities
+
+    def _detect_access_control_heuristic(self, lines: List[str]) -> List[Vulnerability]:
+        vulnerabilities: List[Vulnerability] = []
+        signature_re = re.compile(r"function\s+(mint|burn|withdraw|execute|setAdmin|setOwner|pause|unpause)\s*\([^)]*\)\s*(public|external)\b([^\{]*)")
+
+        for idx, line in enumerate(lines, start=1):
+            match = signature_re.search(line)
+            if not match:
+                continue
+
+            modifiers = (match.group(3) or "").lower()
+            if "onlyowner" in modifiers or "onlyadmin" in modifiers or "onlyrole" in modifiers:
+                continue
+
+            body_window = "\n".join(lines[idx - 1 : min(idx + 8, len(lines))]).lower()
+            if "msg.sender" in body_window and ("== owner" in body_window or "== admin" in body_window):
+                continue
+
+            snippet = self._get_code_snippet(lines, idx, config.code_snippet_context_lines)
+            vulnerabilities.append(
+                Vulnerability(
+                    vuln_type="access_control",
+                    severity="HIGH",
+                    line_number=idx,
+                    description="Sensitive function without access control modifiers",
+                    code_snippet=snippet,
+                    remediation="Add onlyOwner, onlyAdmin, or other access control checks.",
+                    confidence=0.88,
+                    unique_id=f"access_control:{idx}:heuristic",
+                )
+            )
+
+        return vulnerabilities
     
     def _calculate_risk_score(self, result: AnalysisResult) -> float:
         """
@@ -505,13 +568,15 @@ class StaticAnalyzer:
             "CRITICAL": 50,
             "HIGH": 15,
             "MEDIUM": 8,
-            "LOW": 3,
-            "INFO": 1
+            "LOW": 2,
+            "INFO": 0.5
         }
         
         # Calculate base score (weighted by confidence)
         score = 0
         for vuln in result.vulnerabilities:
+            if vuln.confidence < 0.2:
+                continue
             base_weight = severity_weights.get(vuln.severity, 0)
             # Adjust weight by confidence
             adjusted_weight = base_weight * vuln.confidence
