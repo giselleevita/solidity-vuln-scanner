@@ -99,22 +99,27 @@ def sanitize_filename(filename: str) -> str:
     Returns:
         Sanitized filename safe for use in file operations
     """
-    # Decode encoded traversal attempts before stripping directories.
-    safe_name = Path(unquote(filename).replace("\\", "/")).name
-    
-    # Remove any remaining path separators
-    safe_name = safe_name.replace('/', '').replace('\\', '')
-    
-    # Keep only a conservative filename character set. This also removes
-    # traversal markers and shell metacharacters.
-    safe_name = re.sub(r"[^A-Za-z0-9_.-]", "", safe_name).replace("..", "")
+    # Decode encoded traversal attempts and normalize both path separator styles.
+    raw_name = unquote(str(filename or "")).replace("\\", "/")
+    safe_name = Path(raw_name).name
+
+    # Remove control characters.
+    safe_name = ''.join(c for c in safe_name if c.isprintable())
+
+    # Remove common shell metacharacters and any non filename-safe characters.
+    safe_name = re.sub(r'[^A-Za-z0-9._-]', '', safe_name)
+
+    # Collapse dot traversal markers and strip leading dots.
+    while '..' in safe_name:
+        safe_name = safe_name.replace('..', '')
+    safe_name = safe_name.lstrip('.')
     
     # Limit length
     if len(safe_name) > 255:
         safe_name = safe_name[:255]
     
-    # Ensure it's not empty or just dots
-    if not safe_name or safe_name in ('.', '..'):
+    # Ensure it's not empty after sanitization.
+    if not safe_name:
         safe_name = "contract.sol"
     
     return safe_name

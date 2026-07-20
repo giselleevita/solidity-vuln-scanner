@@ -160,6 +160,25 @@ async def security_headers_middleware(request: Request, call_next):
     response.headers.setdefault("Referrer-Policy", "no-referrer")
     return response
 
+
+@app.middleware("http")
+async def request_size_guard_middleware(request: Request, call_next):
+    """Reject oversized analyze payloads before auth/dependency processing."""
+    if request.url.path in {"/analyze", "/analyze-sarif", "/analyze-pdf"}:
+        # Keep this guard strict enough to catch abusive payloads before auth work.
+        max_body_bytes = 1024 * 1024  # 1 MiB
+        content_length = request.headers.get("content-length")
+        if content_length and content_length.isdigit() and int(content_length) > max_body_bytes:
+            return JSONResponse(
+                status_code=413,
+                content=ErrorResponse(
+                    error="Payload too large",
+                    code="PAYLOAD_TOO_LARGE",
+                    message=f"Request body exceeds {max_body_bytes} bytes",
+                ).dict(),
+            )
+    return await call_next(request)
+
 # Global exception handler for standardized error responses
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
@@ -296,6 +315,12 @@ async def health_check():
         version="1.0.0",
         llm_enabled=llm_auditor is not None
     )
+
+
+@app.options("/health", include_in_schema=False)
+async def health_options():
+    """Allow OPTIONS health probes used by CORS/security smoke tests."""
+    return Response(status_code=204)
 
 
 @app.get("/health/detailed")
