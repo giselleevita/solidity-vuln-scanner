@@ -4,6 +4,7 @@ Detects common vulnerabilities using improved pattern matching with context awar
 """
 
 import re
+import hashlib
 from dataclasses import dataclass, field
 from typing import List, Optional, Dict, Tuple, Set
 from app_config import VULN_TYPES, SEVERITY_LEVELS, get_config
@@ -29,14 +30,21 @@ class Vulnerability:
     
     def to_dict(self):
         """Convert to dictionary with enhanced professional audit information"""
+        fingerprint = hashlib.sha256(
+            f"builtin-regex:{self.vuln_type}:{self.line_number}:{self.code_snippet.strip()}".encode()
+        ).hexdigest()
         base_dict = {
+            "rule_id": f"SVS-{self.vuln_type.upper().replace('_', '-')}",
             "type": self.vuln_type,
             "severity": self.severity,
             "line": self.line_number,
             "description": self.description,
             "code_snippet": self.code_snippet,
             "remediation": self.remediation,
-            "confidence": self.confidence
+            "confidence": self.confidence,
+            "source_span": {"start_line": self.line_number, "end_line": self.line_number},
+            "tool_provenance": "builtin-regex",
+            "fingerprint": fingerprint,
         }
         
         # Add SWC classification for professional audits

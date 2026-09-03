@@ -51,7 +51,7 @@ class Config:
     llm_max_contract_size: int = int(os.getenv("LLM_MAX_CONTRACT_SIZE", "50000"))  # Increased from 5000
     
     # Analysis constants
-    max_contract_size_chars: int = int(os.getenv("MAX_CONTRACT_SIZE_CHARS", "1000000"))  # ~1MB
+    max_contract_size_chars: int = int(os.getenv("MAX_CONTRACT_SIZE_CHARS", "200000"))
     code_snippet_context_lines: int = int(os.getenv("CODE_SNIPPET_CONTEXT_LINES", "2"))
     
     # Database settings

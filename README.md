@@ -1,7 +1,11 @@
 # Solidity Vuln Scanner
 
-**Reference security analysis toolkit for Ethereum smart contracts.**
-Combines deterministic static analysis, optional LLM auditing, and external tool cross‑validation to produce **SWC‑mapped findings**, compliance context (CWE/OWASP/DASP), and **professional audit reports** (JSON/HTML/PDF).
+**Status: v1 static-analysis demo · submitted source is not executed or retained**
+
+**[Five-minute technical review](docs/CASE_STUDY.md)** · Public demo is served at `/app/` on the configured Render service and may take about a minute to wake on the free tier.
+
+**Explainable preliminary security analysis for Ethereum smart contracts.**
+The default path is deterministic, built-in source analysis producing stable fingerprints and SARIF. Optional LLM, Slither, and Mythril integrations are local-only extensions and are not required by the hosted demo.
 
 **What it’s for:**  
 - Pre‑deployment security assessments  

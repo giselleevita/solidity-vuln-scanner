@@ -10,6 +10,7 @@ from typing import Optional, List
 from datetime import datetime, timezone
 from fastapi import FastAPI, HTTPException, File, UploadFile, Depends, Request
 from fastapi.responses import JSONResponse, HTMLResponse, Response
+from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
@@ -166,7 +167,7 @@ async def request_size_guard_middleware(request: Request, call_next):
     """Reject oversized analyze payloads before auth/dependency processing."""
     if request.url.path in {"/analyze", "/analyze-sarif", "/analyze-pdf"}:
         # Keep this guard strict enough to catch abusive payloads before auth work.
-        max_body_bytes = 1024 * 1024  # 1 MiB
+        max_body_bytes = 256 * 1024
         content_length = request.headers.get("content-length")
         if content_length and content_length.isdigit() and int(content_length) > max_body_bytes:
             return JSONResponse(
@@ -944,6 +945,11 @@ async def root():
         },
         "docs": "Visit /docs for interactive API documentation"
     })
+
+
+demo_ui = Path(__file__).parent / "web_static"
+if demo_ui.exists():
+    app.mount("/app", StaticFiles(directory=demo_ui, html=True), name="demo-ui")
 
 
 def main():

@@ -11,7 +11,7 @@ class ContractAnalysisRequest(BaseModel):
     """Request model for contract analysis"""
     contract_code: str
     contract_name: str = "Contract"
-    use_llm_audit: bool = True
+    use_llm_audit: bool = False
 
 
 class ContractAnalysisResponse(BaseModel):

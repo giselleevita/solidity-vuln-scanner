@@ -37,13 +37,7 @@
 
 ### Accuracy Limitations
 
-**False Positive Rate:**
-- Static analysis: ~15%
-- LLM analysis: ~20%
-
-**False Negative Rate:**
-- Static analysis: ~10-15%
-- LLM analysis: ~15-20%
+No general false-positive or false-negative percentage is claimed. Accuracy depends on rule, compiler version, coding style, and corpus; the committed fixtures establish regression behavior only.
 
 **Why false positives occur:**
 - Pattern matching may flag safe code that looks similar to vulnerable patterns

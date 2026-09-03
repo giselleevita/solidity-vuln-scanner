@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: solidity-scanner-demo
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile.demo
+    healthCheckPath: /health
+    envVars:
+      - key: USE_LLM
+        value: "false"
+      - key: MAX_CONTRACT_SIZE_CHARS
+        value: "200000"

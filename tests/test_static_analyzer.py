@@ -21,6 +21,11 @@ def test_reentrancy_detected():
     vuln_types = {v.vuln_type for v in result.vulnerabilities}
     assert "reentrancy" in vuln_types
     assert any(v.severity == "CRITICAL" for v in result.vulnerabilities)
+    finding = next(v.to_dict() for v in result.vulnerabilities if v.vuln_type == "reentrancy")
+    assert finding["rule_id"] == "SVS-REENTRANCY"
+    assert finding["tool_provenance"] == "builtin-regex"
+    assert len(finding["fingerprint"]) == 64
+    assert finding["source_span"]["start_line"] >= 1
 
 
 def test_access_control_detected():
@@ -59,4 +64,3 @@ def test_clean_contract_is_safe():
     # With improved patterns, may find some low-confidence findings, but should be minimal
     high_severity = [v for v in result.vulnerabilities if v.severity in ["CRITICAL", "HIGH"]]
     assert len(high_severity) == 0 or all(v.confidence < 0.5 for v in high_severity)
-

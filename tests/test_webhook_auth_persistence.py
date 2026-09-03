@@ -3,7 +3,7 @@ from __future__ import annotations
 import importlib
 from uuid import uuid4
 
-from jose import jwt
+import jwt
 from fastapi.testclient import TestClient
 
 from app_config import get_config
